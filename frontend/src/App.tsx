@@ -499,7 +499,7 @@ function App() {
     loadLatestRecord();
   };
 
-  const handleTabChange = (tabId: string) => {
+  const handleTabChange = (tabId: 'entry' | 'search') => {
     if (tabId === 'entry' && isEdit) {
       if (!confirm("Leave edit mode? Unsaved changes will be lost.")) {
         return;
