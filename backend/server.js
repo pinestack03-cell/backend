@@ -130,20 +130,13 @@ const dbConfig = {
     encrypt: false,
     enableArithAbort: true,
     trustCert: true,
-    connectionTimeout: 30000,
-    requestTimeout: 30000,
-    authentication: {
-      type: "default",
-      options: {
-        userName: process.env.DB_USER || "sa",
-        password: process.env.DB_PASSWORD || "EMTserver@"
-      }
-    }
+    connectionTimeout: 60000,
+    requestTimeout: 60000
   }
 };
 
 console.log("🔌 Connecting to SQL Server:", dbConfig.server + ":" + dbConfig.port, "Database:", dbConfig.database);
-console.log("🔑 User:", dbConfig.user);
+console.log("🔑 User:", dbConfig.user, "Password length:", dbConfig.password ? dbConfig.password.length : 0);
 
 /* ================= SQL CONNECTION ================= */
 
