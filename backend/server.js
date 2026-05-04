@@ -64,7 +64,7 @@ function sanitizeGeminiResponse(data) {
 
 const app = express();
 app.use(cors({
-  origin: "*",
+  origin: ["https://my-app.vercel.app", "http://localhost:5174"],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true
 }));
@@ -139,6 +139,35 @@ sql.connect(dbConfig)
 
 app.get("/", (req, res) => {
   res.send("Backend is running 🚀");
+});
+
+app.get("/api", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "Backend API is running",
+    endpoints: {
+      GET: [
+        "/api - API info",
+        "/api/resources - Get all resources",
+        "/api/resources/latest - Get latest resource",
+        "/api/resources/next-entry - Get next entry number",
+        "/api/resources/:id - Get resource by ID",
+        "/api/resources/search - Search resources with filters",
+        "/api/check-phone - Check phone duplicate",
+        "/api/departments - Get all departments",
+        "/api/test - Database test"
+      ],
+      POST: [
+        "/api/resources - Create new resource",
+        "/api/resources/upload - Upload file",
+        "/parse-cv - Parse CV PDF",
+        "/insert-candidate - Insert candidate"
+      ],
+      PUT: [
+        "/api/resources/:id - Update resource"
+      ]
+    }
+  });
 });
 
 /* ================= API: GET LATEST RECORD ================= */
@@ -1044,7 +1073,7 @@ app.get("/search-candidates", async (req, res) => {
 
 /* ================= START SERVER ================= */
 
-app.listen(3000, "0.0.0.0", () => {
-  console.log("🚀 Backend running on http://0.0.0.0:3000");
-  console.log("   Access from other PC: http://[YOUR_IP]:3000");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Backend running on https://backend-onbf.onrender.com`);
 });
