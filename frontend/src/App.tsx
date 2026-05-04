@@ -23,7 +23,8 @@ function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [, setFileType] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'entry' | 'search'>('entry');
+  type TabType = 'entry' | 'search';
+  const [activeTab, setActiveTab] = useState<TabType>('entry');
   const [uploadedFilePath, setUploadedFilePath] = useState<string | null>(null);
   const [isEdit, setIsEdit] = useState(false);
   const [recordId, setRecordId] = useState<number | null>(null);
@@ -499,7 +500,7 @@ function App() {
     loadLatestRecord();
   };
 
-  const handleTabChange = (newTab: 'entry' | 'search') => {
+  const handleTabChange = (newTab: TabType) => {
     if (activeTab === 'entry' && isEdit && newTab === 'search') {
       if (!confirm("Leave edit mode? Unsaved changes will be lost.")) {
         return;
@@ -536,7 +537,7 @@ function App() {
       }
       setIsEdit(true);
       setRecordId(data.slNo);
-      setActiveTab('entry');
+      setActiveTab('entry' as TabType);
       setPhoneErrors({
         phone1: { error: "", isValid: false, isChecking: false, touched: false },
         phone2: { error: "", isValid: false, isChecking: false, touched: false }
