@@ -23,7 +23,7 @@ function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [, setFileType] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'entry' | 'search'>('entry');
+  const [activeTab, setActiveTab] = useState<string>('entry');
   const [uploadedFilePath, setUploadedFilePath] = useState<string | null>(null);
   const [isEdit, setIsEdit] = useState(false);
   const [recordId, setRecordId] = useState<number | null>(null);
