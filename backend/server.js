@@ -122,9 +122,13 @@ const dbConfig = {
   database: process.env.DB_NAME || "GLOBE1",
   options: {  
     trustServerCertificate: true,
-    encrypt: false
+    encrypt: false,
+    connectionTimeout: 30000,
+    requestTimeout: 30000
   }
 };
+
+console.log("🔌 Connecting to SQL Server:", dbConfig.server + ":" + dbConfig.port, "Database:", dbConfig.database);
 
 /* ================= SQL CONNECTION ================= */
 
@@ -133,7 +137,7 @@ sql.connect(dbConfig)
     console.log("✅ SQL Server Connected to", dbConfig.database);
   })
   .catch(err => {
-    console.error("❌ SQL Connection Error:", err);
+    console.error("❌ SQL Connection Error:", err.message);
   });
 
 /* ================= HEALTH CHECK ================= */
