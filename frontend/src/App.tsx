@@ -499,14 +499,14 @@ function App() {
     loadLatestRecord();
   };
 
-  const handleTabChange = (tabId: 'entry' | 'search') => {
-    if (tabId === 'entry' && isEdit) {
+  const handleTabChange = (newTab: 'entry' | 'search') => {
+    if (activeTab === 'entry' && isEdit && newTab === 'search') {
       if (!confirm("Leave edit mode? Unsaved changes will be lost.")) {
         return;
       }
       handleCancelEdit();
     }
-    setActiveTab(tabId);
+    setActiveTab(newTab);
   };
 
   const handleRecordSelect = async (record: EditingRecord) => {
