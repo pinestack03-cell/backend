@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { GlassCard, SearchView } from "./components";
 import { API_URL } from "./utils/api";
 
+type TabType = 'entry' | 'search';
+
 interface EditingRecord {
   slNo: number;
   entryNo: string;
@@ -23,7 +25,6 @@ function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [, setFileType] = useState<string | null>(null);
-  type TabType = 'entry' | 'search';
   const [activeTab, setActiveTab] = useState<TabType>('entry');
   const [uploadedFilePath, setUploadedFilePath] = useState<string | null>(null);
   const [isEdit, setIsEdit] = useState(false);
@@ -621,7 +622,7 @@ function App() {
                         <button
                 onClick={() => handleTabChange('search')}
                 className={`px-1 py-1 text-sm font-semibold rounded-lg transition-all ${
-                  activeTab === 'search'
+String(activeTab) === 'search'
                     ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400/50'
                     : 'bg-white/10 text-white/70 border border-white/20 hover:bg-white/20'
                 }`}
