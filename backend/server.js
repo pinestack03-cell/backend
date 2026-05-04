@@ -120,15 +120,30 @@ const dbConfig = {
   server: process.env.DB_SERVER || "192.168.29.140",
   port: parseInt(process.env.DB_PORT) || 1433,
   database: process.env.DB_NAME || "GLOBE1",
+  pool: {
+    max: 1,
+    min: 0,
+    idleTimeoutMillis: 30000
+  },
   options: {  
     trustServerCertificate: true,
     encrypt: false,
+    enableArithAbort: true,
+    trustCert: true,
     connectionTimeout: 30000,
-    requestTimeout: 30000
+    requestTimeout: 30000,
+    authentication: {
+      type: "default",
+      options: {
+        userName: process.env.DB_USER || "sa",
+        password: process.env.DB_PASSWORD || "EMTserver@"
+      }
+    }
   }
 };
 
 console.log("🔌 Connecting to SQL Server:", dbConfig.server + ":" + dbConfig.port, "Database:", dbConfig.database);
+console.log("🔑 User:", dbConfig.user);
 
 /* ================= SQL CONNECTION ================= */
 
