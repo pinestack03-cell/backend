@@ -3,6 +3,7 @@ const express = require("express");
 const multer = require("multer");
 const cors = require("cors");
 const sql = require("mssql");
+const pg = require("pg");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const path = require("path");
 const fs = require("fs");
@@ -112,7 +113,7 @@ const model = genAI.getGenerativeModel({
   model: "gemini-2.5-flash",
 });
 
-/* ================= SQL SERVER CONFIG ================= */
+/* ================= DATABASE CONFIG ================= */
 
 const dbConfig = {
   user: process.env.DB_USER || "sa",
@@ -138,15 +139,98 @@ const dbConfig = {
 console.log("🔌 Connecting to SQL Server:", dbConfig.server + ":" + dbConfig.port, "Database:", dbConfig.database);
 console.log("🔑 User:", dbConfig.user, "Password length:", dbConfig.password ? dbConfig.password.length : 0);
 
-/* ================= SQL CONNECTION ================= */
+/* ================= POSTGRESQL CONFIG ================= */
 
-sql.connect(dbConfig)
-  .then(() => {
-    console.log("✅ SQL Server Connected to", dbConfig.database);
-  })
-  .catch(err => {
-    console.error("❌ SQL Connection Error:", err.message);
-  });
+const pgConfig = {
+  connectionString: process.env.DATABASE_URL || 
+    `postgres://${process.env.PG_USER || 'globe1_db_user'}:${process.env.PG_PASSWORD || '70hwjlSFxAZueUnhZ7bY1GVecImVm1lE'}@${process.env.PG_HOST || 'dpg-d7s9gb0g4nts73d72nhg-a.oregon-postgres.render.com'}:${process.env.PG_PORT || 5432}/${process.env.PG_DATABASE || 'globe1_db'}`,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+};
+
+const { Pool } = pg;
+const pgPool = new Pool({
+  connectionString: pgConfig.connectionString,
+  ssl: pgConfig.ssl
+});
+
+/* ================= INIT POSTGRESQL TABLE ================= */
+
+async function initPostgresTable() {
+  try {
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS resource_mt (
+        sl_no SERIAL PRIMARY KEY,
+        entry_no INTEGER,
+        datez TIMESTAMP DEFAULT NOW(),
+        phone1 VARCHAR(10),
+        phone2 VARCHAR(10),
+        name VARCHAR(30),
+        post VARCHAR(50),
+        department VARCHAR(30),
+        location VARCHAR(30),
+        cur_status CHAR(30),
+        assign_to CHAR(30),
+        experience NUMERIC(4,1),
+        cur_salary NUMERIC(12,3),
+        exp_salary NUMERIC(12,3),
+        remarks1 VARCHAR(30),
+        remarks2 CHAR(50),
+        remarks3 CHAR(50),
+        fr BOOLEAN DEFAULT false,
+        add_user CHAR(40),
+        add_dt TIMESTAMP DEFAULT NOW(),
+        edit_user CHAR(40),
+        edit_dt TIMESTAMP,
+        doc_path VARCHAR(500)
+      )
+    `);
+    console.log("✅ PostgreSQL table 'resource_mt' ready");
+  } catch (err) {
+    console.error("❌ Table init error:", err.message);
+  }
+}
+
+/* ================= DATABASE CONNECTION ================= */
+
+const usePostgres = !!process.env.DATABASE_URL;
+
+if (usePostgres) {
+  pgPool.connect()
+    .then(() => {
+      console.log("✅ PostgreSQL Connected");
+      initPostgresTable();
+    })
+    .catch(err => {
+      console.error("❌ PostgreSQL Connection Error:", err.message);
+    });
+} else {
+  sql.connect(dbConfig)
+    .then(() => {
+      console.log("✅ SQL Server Connected to", dbConfig.database);
+    })
+    .catch(err => {
+      console.error("❌ SQL Connection Error:", err.message);
+    });
+}
+
+/* ================= DB REQUEST HELPER ================= */
+
+async function createDbRequest() {
+  if (usePostgres) {
+    return { type: 'postgres', pool: pgPool };
+  } else {
+    return { type: 'mssql', request: new sql.Request() };
+  }
+}
+
+async function executeQuery(reqObj, query) {
+  if (reqObj.type === 'postgres') {
+    const result = await reqObj.pool.query(query);
+    return { recordset: result.rows };
+  } else {
+    return await reqObj.request.query(query);
+  }
+}
 
 /* ================= HEALTH CHECK ================= */
 
@@ -187,6 +271,37 @@ app.get("/api", (req, res) => {
 
 app.get("/api/resources/latest", async (req, res) => {
   try {
+    if (usePostgres) {
+      const result = await pgPool.query(`
+        SELECT
+          sl_no as "slNo",
+          entry_no as "entryNo",
+          to_char(datez, 'YYYY-MM-DD') as datez,
+          phone1,
+          phone2,
+          name,
+          post,
+          department,
+          location,
+          doc_path as "docPath",
+          experience,
+          cur_salary as "currentSalary",
+          exp_salary as "expectedSalary",
+          remarks1 as remark,
+          cur_status as status,
+          assign_to as "assignTo"
+        FROM resource_mt
+        ORDER BY entry_no DESC
+        LIMIT 1
+      `);
+
+      if (result.rows.length === 0) {
+        return res.json({ empty: true });
+      }
+
+      return res.json(result.rows[0]);
+    }
+
     const request = new sql.Request();
     const result = await request.query(`
       SELECT TOP 1
@@ -225,6 +340,13 @@ app.get("/api/resources/latest", async (req, res) => {
 
 app.get("/api/resources/next-entry", async (req, res) => {
   try {
+    if (usePostgres) {
+      const result = await pgPool.query(`
+        SELECT COALESCE(MAX(entry_no), 0) + 1 AS "nextEntryNo" FROM resource_mt
+      `);
+      return res.json({ nextEntryNo: result.rows[0].nextEntryNo });
+    }
+
     const request = new sql.Request();
     const result = await request.query(`
       SELECT ISNULL(MAX(ENTRY_NO), 0) + 1 AS nextEntryNo FROM RESOURCE_MT
@@ -243,6 +365,83 @@ app.post("/api/resources", async (req, res) => {
     const raw = req.body;
     const data = sanitizeFields(raw);
     const { name, phone1, phone2, post, department, location, docPath, experience, currentSalary, expectedSalary, remark, status, assignTo, entryDate } = data;
+
+    if (usePostgres) {
+      const genResult = await pgPool.query(`
+        SELECT COALESCE(MAX(entry_no), 0) + 1 AS "nextEntryNo" FROM resource_mt
+      `);
+      const nextEntryNo = genResult.rows[0].nextEntryNo;
+
+      await pgPool.query(`
+        INSERT INTO resource_mt
+        (
+          entry_no, datez, phone1, phone2, name, post, department,
+          location, cur_status, assign_to, experience,
+          cur_salary, exp_salary,
+          remarks1, remarks2, remarks3,
+          fr, add_user, add_dt, edit_user, edit_dt, doc_path
+        )
+        VALUES
+        (
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, $11,
+          $12, $13,
+          $14, $15, $16,
+          $17, $18, $19, $20, $21, $22
+        )
+      `, [
+        nextEntryNo,
+        entryDate ? new Date(entryDate) : new Date(),
+        trimField(phone1, 10),
+        trimField(phone2, 10),
+        trimField(name, 30),
+        trimField(post, 50),
+        trimField(department, 30),
+        trimField(location, 30),
+        trimField(status, 30),
+        trimField(assignTo, 30),
+        experience || 0,
+        currentSalary || 0,
+        expectedSalary || 0,
+        trimField(remark, 30),
+        "",
+        "",
+        false,
+        "ADMIN",
+        new Date(),
+        "ADMIN",
+        null,
+        docPath || null
+      ]);
+
+      const fetchResult = await pgPool.query(`
+        SELECT
+          sl_no as "slNo",
+          entry_no as "entryNo",
+          to_char(datez, 'YYYY-MM-DD') as datez,
+          phone1,
+          phone2,
+          name,
+          post,
+          department,
+          location,
+          doc_path as "docPath",
+          experience,
+          cur_salary as "currentSalary",
+          exp_salary as "expectedSalary",
+          remarks1 as remark,
+          cur_status as status,
+          assign_to as "assignTo"
+        FROM resource_mt
+        WHERE entry_no = $1
+        LIMIT 1
+      `, [nextEntryNo]);
+
+      return res.json({
+        success: true,
+        record: fetchResult.rows[0]
+      });
+    }
 
     const genRequest = new sql.Request();
     const genResult = await genRequest.query(`
@@ -336,6 +535,68 @@ app.get("/api/resources", async (req, res) => {
     
     console.log("🔍 Search request:", { name, phone, department, search });
     
+    if (usePostgres) {
+      let pgQuery = `
+        SELECT
+          sl_no as "slNo",
+          entry_no as "entryNo",
+          to_char(datez, 'YYYY-MM-DD') as datez,
+          phone1,
+          phone2,
+          name,
+          post,
+          department,
+          location,
+          doc_path as "docPath",
+          experience,
+          cur_salary as "currentSalary",
+          exp_salary as "expectedSalary",
+          remarks1 as remark,
+          cur_status as status,
+          assign_to as "assignTo"
+        FROM resource_mt
+        WHERE 1=1
+      `;
+      const params = [];
+      let paramIdx = 1;
+
+      if (search) {
+        pgQuery += ` AND (
+          LOWER(name) LIKE LOWER($${paramIdx}) OR 
+          LOWER(phone1) LIKE LOWER($${paramIdx}) OR
+          LOWER(phone2) LIKE LOWER($${paramIdx}) OR
+          LOWER(CAST(entry_no AS VARCHAR(50))) LIKE LOWER($${paramIdx})
+        )`;
+        params.push(`%${search}%`);
+        paramIdx++;
+      }
+
+      if (name) {
+        pgQuery += ` AND LOWER(name) LIKE LOWER($${paramIdx})`;
+        params.push(`%${name}%`);
+        paramIdx++;
+      }
+
+      if (phone) {
+        pgQuery += ` AND (LOWER(phone1) LIKE LOWER($${paramIdx}) OR LOWER(phone2) LIKE LOWER($${paramIdx}))`;
+        params.push(`%${phone}%`);
+        paramIdx++;
+      }
+
+      if (department) {
+        pgQuery += ` AND LOWER(department) = LOWER($${paramIdx})`;
+        params.push(department);
+        paramIdx++;
+      }
+
+      pgQuery += ` ORDER BY datez DESC LIMIT 100`;
+
+      console.log("📝 Executing pg query:", pgQuery);
+      const result = await pgPool.query(pgQuery, params);
+      console.log("✅ Found records:", result.rows.length);
+      return res.json(result.rows);
+    }
+
     let query = `
       SELECT TOP 100
         SL_NO as slNo,
@@ -408,6 +669,36 @@ app.get("/api/check-phone", async (req, res) => {
       return res.json({ exists: false, valid: false });
     }
     
+    if (usePostgres) {
+      let pgQuery = `
+        SELECT phone1 AS phone, name, sl_no
+        FROM resource_mt
+        WHERE (phone1 = $1 OR phone2 = $1)
+      `;
+      const params = [phone];
+
+      if (slNo) {
+        pgQuery += ` AND sl_no != $2`;
+        params.push(parseInt(slNo));
+      }
+
+      const result = await pgPool.query(pgQuery, params);
+
+      if (result.rows.length > 0) {
+        return res.json({
+          exists: true,
+          valid: true,
+          record: result.rows[0]
+        });
+      } else {
+        return res.json({
+          exists: false,
+          valid: true,
+          record: null
+        });
+      }
+    }
+    
     const request = new sql.Request();
     
     let query = `
@@ -454,6 +745,103 @@ app.get("/api/resources/search", async (req, res) => {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
     const offset = (pageNum - 1) * limitNum;
+    
+    if (usePostgres) {
+      let pgWhereConditions = [];
+      const pgParams = [];
+      let pgIdx = 1;
+
+      if (name) {
+        pgWhereConditions.push(`(name LIKE $${pgIdx} OR name LIKE $${pgIdx + 1})`);
+        pgParams.push(name, `%${name}%`);
+        pgIdx += 2;
+      }
+
+      if (phone1) {
+        pgWhereConditions.push(`phone1 LIKE $${pgIdx}`);
+        pgParams.push(`%${phone1}%`);
+        pgIdx++;
+      }
+
+      if (phone2) {
+        pgWhereConditions.push(`phone2 LIKE $${pgIdx}`);
+        pgParams.push(`%${phone2}%`);
+        pgIdx++;
+      }
+
+      if (post) {
+        pgWhereConditions.push(`(post LIKE $${pgIdx} OR post LIKE $${pgIdx + 1})`);
+        pgParams.push(post, `%${post}%`);
+        pgIdx += 2;
+      }
+
+      if (department) {
+        pgWhereConditions.push(`(department LIKE $${pgIdx} OR department LIKE $${pgIdx + 1})`);
+        pgParams.push(department, `%${department}%`);
+        pgIdx += 2;
+      }
+
+      if (location) {
+        pgWhereConditions.push(`(location LIKE $${pgIdx} OR location LIKE $${pgIdx + 1})`);
+        pgParams.push(location, `%${location}%`);
+        pgIdx += 2;
+      }
+
+      if (status) {
+        pgWhereConditions.push(`cur_status LIKE $${pgIdx}`);
+        pgParams.push(`%${status}%`);
+        pgIdx++;
+      }
+
+      if (assignTo) {
+        pgWhereConditions.push(`assign_to LIKE $${pgIdx}`);
+        pgParams.push(`%${assignTo}%`);
+        pgIdx++;
+      }
+
+      const pgWhereClause = pgWhereConditions.length > 0 ? pgWhereConditions.join(" AND ") : "1=1";
+
+      // Count query for postgres
+      const countParams = [...pgParams];
+      const countResult = await pgPool.query(
+        `SELECT COUNT(*) as total FROM resource_mt WHERE ${pgWhereClause}`,
+        countParams
+      );
+      const totalRecords = parseInt(countResult.rows[0].total);
+
+      // Data query for postgres
+      const dataResult = await pgPool.query(`
+        SELECT
+          sl_no as "slNo",
+          entry_no as "entryNo",
+          to_char(datez, 'YYYY-MM-DD') as datez,
+          phone1,
+          phone2,
+          name,
+          post,
+          department,
+          location,
+          doc_path as "docPath",
+          experience,
+          cur_salary as "currentSalary",
+          exp_salary as "expectedSalary",
+          remarks1 as remark,
+          cur_status as status,
+          assign_to as "assignTo"
+        FROM resource_mt
+        WHERE ${pgWhereClause}
+        ORDER BY entry_no DESC
+        LIMIT $${pgIdx} OFFSET $${pgIdx + 1}
+      `, [...pgParams, limitNum, offset]);
+
+      return res.json({
+        records: dataResult.rows,
+        total: totalRecords,
+        page: pageNum,
+        totalPages: Math.ceil(totalRecords / limitNum),
+        limit: limitNum
+      });
+    }
     
     const request = new sql.Request();
     
@@ -566,6 +954,37 @@ app.get("/api/resources/:id", async (req, res) => {
     const { id } = req.params;
     console.log("🔍 Fetching resource by ID:", id);
     
+    if (usePostgres) {
+      const result = await pgPool.query(`
+        SELECT
+          sl_no as "slNo",
+          entry_no as "entryNo",
+          to_char(datez, 'YYYY-MM-DD') as datez,
+          phone1,
+          phone2,
+          name,
+          post,
+          department,
+          location,
+          doc_path as "docPath",
+          experience,
+          cur_salary as "currentSalary",
+          exp_salary as "expectedSalary",
+          remarks1 as remark,
+          cur_status as status,
+          assign_to as "assignTo"
+        FROM resource_mt
+        WHERE sl_no = $1
+      `, [parseInt(id)]);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Record not found" });
+      }
+
+      console.log("✅ Found resource:", result.rows[0]);
+      return res.json(result.rows[0]);
+    }
+    
     const request = new sql.Request();
     request.input("id", sql.Int, parseInt(id));
     
@@ -637,6 +1056,52 @@ app.put("/api/resources/:id", async (req, res) => {
     
     console.log("🔄 Updating resource ID:", id, { name, post, department, docPath, experience, currentSalary, expectedSalary, remark, status, assignTo });
     
+    if (usePostgres) {
+      let pgQuery = `
+        UPDATE resource_mt
+        SET
+          name = $1,
+          phone1 = $2,
+          phone2 = $3,
+          post = $4,
+          department = $5,
+          location = $6,
+          experience = $7,
+          cur_salary = $8,
+          exp_salary = $9,
+          remarks1 = $10,
+          cur_status = $11,
+          assign_to = $12
+      `;
+      const pgParams = [
+        trimField(name, 30),
+        trimField(phone1, 10),
+        trimField(phone2, 10),
+        trimField(post, 50),
+        trimField(department, 30),
+        trimField(location, 30),
+        experience || 0,
+        currentSalary || 0,
+        expectedSalary || 0,
+        trimField(remark, 30),
+        trimField(status, 30),
+        trimField(assignTo, 30)
+      ];
+
+      if (docPath !== undefined) {
+        pgQuery += `, doc_path = $13`;
+        pgParams.push(docPath || null);
+      }
+
+      pgQuery += ` WHERE sl_no = $${pgParams.length + 1}`;
+      pgParams.push(parseInt(id));
+
+      await pgPool.query(pgQuery, pgParams);
+
+      console.log("✅ Resource updated successfully");
+      return res.json({ success: true, message: "Resource updated" });
+    }
+    
     const request = new sql.Request();
     
     let query = `
@@ -691,6 +1156,12 @@ app.put("/api/resources/:id", async (req, res) => {
 
 app.get("/api/test", async (req, res) => {
   try {
+    if (usePostgres) {
+      const result = await pgPool.query(`SELECT * FROM resource_mt LIMIT 5`);
+      console.log("✅ Test query successful, rows:", result.rows.length);
+      return res.json({ success: true, count: result.rows.length, data: result.rows });
+    }
+
     const request = new sql.Request();
     const result = await request.query(`SELECT TOP 5 * FROM RESOURCE_MT`);
     console.log("✅ Test query successful, rows:", result.recordset.length);
@@ -705,6 +1176,16 @@ app.get("/api/test", async (req, res) => {
 
 app.get("/api/departments", async (req, res) => {
   try {
+    if (usePostgres) {
+      const result = await pgPool.query(`
+        SELECT DISTINCT department AS name
+        FROM resource_mt
+        WHERE department IS NOT NULL AND department != ''
+        ORDER BY department
+      `);
+      return res.json(result.rows);
+    }
+
     const request = new sql.Request();
     const result = await request.query(`
       SELECT DISTINCT DEPARTMENT as name 
@@ -909,6 +1390,85 @@ app.post("/insert-candidate", async (req, res) => {
       docPath
     } = data;
 
+    if (usePostgres) {
+      const genResult = await pgPool.query(`
+        SELECT COALESCE(MAX(entry_no), 0) + 1 AS "nextEntryNo" FROM resource_mt
+      `);
+      const nextEntryNo = genResult.rows[0].nextEntryNo;
+
+      await pgPool.query(`
+        INSERT INTO resource_mt
+        (
+          entry_no, datez, phone1, phone2, name, post, department,
+          location, cur_status, assign_to, experience,
+          cur_salary, exp_salary,
+          remarks1, remarks2, remarks3,
+          fr, add_user, add_dt, edit_user, edit_dt, doc_path
+        )
+        VALUES
+        (
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, $11,
+          $12, $13,
+          $14, $15, $16,
+          $17, $18, $19, $20, $21, $22
+        )
+      `, [
+        nextEntryNo,
+        entryDate ? new Date(entryDate) : new Date(),
+        trimField(mobile, 10),
+        trimField(altMobile || mobile, 10),
+        trimField(name, 30),
+        trimField(post, 50),
+        trimField(department, 30),
+        trimField(location, 30),
+        trimField(status, 30),
+        trimField(assignTo, 30),
+        experience || 0,
+        currentSalary || 0,
+        expectedSalary || 0,
+        trimField(remark, 30),
+        "",
+        "",
+        false,
+        "NAVEEN",
+        new Date(),
+        "ADMIN",
+        null,
+        docPath || null
+      ]);
+
+      const fetchResult = await pgPool.query(`
+        SELECT
+          sl_no as "slNo",
+          entry_no as "entryNo",
+          to_char(datez, 'YYYY-MM-DD') as datez,
+          phone1,
+          phone2,
+          name,
+          post,
+          department,
+          location,
+          doc_path as "docPath",
+          experience,
+          cur_salary as "currentSalary",
+          exp_salary as "expectedSalary",
+          remarks1 as remark,
+          cur_status as status,
+          assign_to as "assignTo"
+        FROM resource_mt
+        WHERE entry_no = $1
+        LIMIT 1
+      `, [nextEntryNo]);
+
+      return res.json({
+        success: true,
+        message: "Candidate inserted successfully",
+        entryNo: nextEntryNo,
+        record: fetchResult.rows[0]
+      });
+    }
+
     // Auto-generate ENTRY_NO
     const genRequest = new sql.Request();
     const genResult = await genRequest.query(`
@@ -1009,6 +1569,26 @@ app.post("/insert-candidate", async (req, res) => {
 
 app.get("/get-candidates", async (req, res) => {
   try {
+    if (usePostgres) {
+      const result = await pgPool.query(`
+        SELECT
+          entry_no as "entryNo",
+          to_char(datez, 'YYYY-MM-DD') as "entryDate",
+          name,
+          phone1 as mobile,
+          post,
+          department,
+          location,
+          cur_status as status,
+          assign_to as "assignTo",
+          remarks1 as remark
+        FROM resource_mt
+        ORDER BY datez DESC
+        LIMIT 100
+      `);
+      return res.json(result.rows);
+    }
+
     const request = new sql.Request();
     const result = await request.query(`
       SELECT TOP 100 
@@ -1037,6 +1617,53 @@ app.get("/get-candidates", async (req, res) => {
 app.get("/search-candidates", async (req, res) => {
   try {
     const { q, department, status } = req.query;
+
+    if (usePostgres) {
+      let pgQuery = `
+        SELECT
+          entry_no as "entryNo",
+          to_char(datez, 'YYYY-MM-DD') as "entryDate",
+          name,
+          phone1 as mobile,
+          post,
+          department,
+          location,
+          cur_status as status,
+          assign_to as "assignTo",
+          remarks1 as remark
+        FROM resource_mt
+        WHERE 1=1
+      `;
+      const pgParams = [];
+      let pgIdx = 1;
+
+      if (q) {
+        pgQuery += ` AND (
+          name LIKE $${pgIdx} OR
+          CAST(entry_no AS VARCHAR) LIKE $${pgIdx}
+        )`;
+        pgParams.push(`%${q}%`);
+        pgIdx++;
+      }
+
+      if (department) {
+        pgQuery += ` AND department = $${pgIdx}`;
+        pgParams.push(department);
+        pgIdx++;
+      }
+
+      if (status) {
+        pgQuery += ` AND cur_status = $${pgIdx}`;
+        pgParams.push(status);
+        pgIdx++;
+      }
+
+      pgQuery += ` ORDER BY datez DESC LIMIT 100`;
+
+      const result = await pgPool.query(pgQuery, pgParams);
+      return res.json(result.rows);
+    }
+
     let query = `
       SELECT TOP 100 
         ENTRY_NO as entryNo,
