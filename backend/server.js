@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
 const cors = require("cors");
@@ -64,12 +64,20 @@ function sanitizeGeminiResponse(data) {
 }
 
 const app = express();
+
 app.use(cors({
-  origin: ["https://my-app.vercel.app", "http://localhost:5174"],
+  origin: [
+    "https://my-app.vercel.app",
+    "http://localhost:5174",
+    "http://103.119.56.74:5174"
+  ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true
 }));
+
 app.use(express.json());
+
+// Your routes come after this
 
 const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -118,20 +126,14 @@ const model = genAI.getGenerativeModel({
 const dbConfig = {
   user: process.env.DB_USER || "sa",
   password: process.env.DB_PASSWORD || "EMTserver@",
-  server: process.env.DB_SERVER || "192.168.29.140",
-  port: parseInt(process.env.DB_PORT) || 1433,
-  database: process.env.DB_NAME || "GLOBE1",
-  pool: {
-    max: 1,
-    min: 0,
-    idleTimeoutMillis: 30000
-  },
-  options: {  
-    trustServerCertificate: true,
+  server: process.env.DB_SERVER || "WIN-29FNP6Q95S6",
+  port: 54930,
+  database: process.env.DB_NAME || "globe1",
+  options: {
     encrypt: false,
+    trustServerCertificate: true,
     enableArithAbort: true,
-    trustCert: true,
-    connectionTimeout: 60000,
+    connectTimeout: 60000,
     requestTimeout: 60000
   }
 };
@@ -235,7 +237,7 @@ async function executeQuery(reqObj, query) {
 /* ================= HEALTH CHECK ================= */
 
 app.get("/", (req, res) => {
-  res.send("Backend is running 🚀");
+  res.send("Backend is running || CHETAN  🚀");
 });
 
 app.get("/api", (req, res) => {
@@ -473,7 +475,7 @@ app.post("/api/resources", async (req, res) => {
       .input("ADD_DT", sql.DateTime, new Date())
       .input("EDIT_USER", sql.Char(40), "ADMIN")
       .input("EDIT_DT", sql.DateTime, null)
-      .input("DOC_PATH", sql.VarChar(500), docPath || null)
+      .input("DOC_PATH", sql.VarChar(500), docPath || "")
       .query(`
         INSERT INTO RESOURCE_MT
         (
@@ -906,9 +908,14 @@ app.get("/api/resources/search", async (req, res) => {
     const countQuery = `SELECT COUNT(*) as total FROM RESOURCE_MT WHERE ${whereClause}`;
     const countResult = await countRequest.query(countQuery);
     const totalRecords = countResult.recordset[0].total;
-    
-    const dataQuery = `
-      SELECT
+
+
+
+const dataQuery = `
+WITH Result AS (
+    SELECT
+        ROW_NUMBER() OVER (ORDER BY ENTRY_NO DESC) AS RowNum,
+
         SL_NO as slNo,
         ENTRY_NO as entryNo,
         CONVERT(varchar, DATEZ, 23) as datez,
@@ -925,12 +932,16 @@ app.get("/api/resources/search", async (req, res) => {
         REMARKS1 as remark,
         CUR_STATUS as status,
         ASSIGN_TO as assignTo
-      FROM RESOURCE_MT
-      WHERE ${whereClause}
-      ORDER BY ENTRY_NO DESC
-      OFFSET ${offset} ROWS
-      FETCH NEXT ${limitNum} ROWS ONLY
-    `;
+
+    FROM RESOURCE_MT
+    WHERE ${whereClause}
+)
+
+SELECT *
+FROM Result
+WHERE RowNum BETWEEN ${offset + 1} AND ${offset + limitNum}
+ORDER BY RowNum;
+`;
     
     const dataResult = await request.query(dataQuery);
     
@@ -1123,7 +1134,7 @@ app.put("/api/resources/:id", async (req, res) => {
     
     if (docPath !== undefined) {
       query += `, DOC_PATH = @DOC_PATH`;
-      request.input("DOC_PATH", sql.VarChar(500), docPath || null);
+      request.input("DOC_PATH", sql.VarChar(500), docPath || "");
     }
     
     query += ` WHERE SL_NO = @SL_NO`;
@@ -1500,7 +1511,7 @@ app.post("/insert-candidate", async (req, res) => {
       .input("ADD_DT", sql.DateTime, new Date())
       .input("EDIT_USER", sql.Char(40), "ADMIN")
       .input("EDIT_DT", sql.DateTime, null)
-      .input("DOC_PATH", sql.VarChar(500), docPath || null)
+      .input("DOC_PATH", sql.VarChar(500), docPath || "")
       .query(`
         INSERT INTO RESOURCE_MT
         (
@@ -1713,7 +1724,7 @@ app.get("/search-candidates", async (req, res) => {
 
 /* ================= START SERVER ================= */
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 90;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Backend running on https://backend-onbf.onrender.com`);
+  console.log(`Backend running at http://0.0.0.0:${PORT}`);
 });
