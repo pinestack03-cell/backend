@@ -68,13 +68,14 @@ const app = express();
 app.use(cors({
   origin: [
     "https://backend-teal-eta-16kjnjoktg.vercel.app",
+    "https://globe1.online",
+    "https://www.globe1.online",
     "http://localhost:5174",
     "http://103.119.56.74:5174"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true
 }));
-
 app.use(express.json());
 
 // Your routes come after this
