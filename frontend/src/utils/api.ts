@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'https://api.globe1.online';
+const API_BASE =import.meta.env.VITE_API_URL || 'https://resume-api.globe1.online';
 
 export const API_URL = {
   base: API_BASE,
