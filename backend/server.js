@@ -67,7 +67,7 @@ const app = express();
 
 app.use(cors({
   origin: [
-    "https://my-app.vercel.app",
+    "https://backend-teal-eta-16kjnjoktg.vercel.app",
     "http://localhost:5174",
     "http://103.119.56.74:5174"
   ],
