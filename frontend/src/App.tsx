@@ -1,6 +1,28 @@
-import { useState, useEffect, useRef } from "react";
-import { GlassCard, SearchView } from "./components";
-import { API_URL } from "./utils/api";
+import { useEffect, useRef, useState } from 'react';
+import {
+  ArrowSquareOut,
+  Check,
+  CircleNotch,
+  FilePdf,
+  FileText,
+  Plus,
+  Sparkle,
+  UploadSimple,
+} from '@phosphor-icons/react';
+import {
+  Button,
+  ConfirmDialog,
+  Field,
+  Input,
+  Panel,
+  PageHeader,
+  SearchView,
+  Textarea,
+  Toaster,
+  TopNav,
+} from './components';
+import { API_URL } from './utils/api';
+import { toast } from './utils/toast';
 
 type TabType = 'entry' | 'search';
 
@@ -21,6 +43,39 @@ interface EditingRecord {
   remark?: string;
 }
 
+const MAX_LENGTHS = {
+  phone1: 10,
+  phone2: 10,
+  name: 30,
+  post: 50,
+  department: 30,
+  location: 30,
+  assignTo: 30,
+  remark: 30,
+};
+
+function FormSection({
+  title,
+  hint,
+  children,
+  gridClass = 'grid grid-cols-2 gap-4',
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+  gridClass?: string;
+}) {
+  return (
+    <section className="mt-6 border-t border-slate-100 pt-5 first:mt-0 first:border-t-0 first:pt-0">
+      <h2 className="text-[13px] font-semibold text-slate-900">{title}</h2>
+      {hint && <p className="mt-0.5 text-xs text-slate-400">{hint}</p>}
+      <div className={`${gridClass} mt-3`}>{children}</div>
+    </section>
+  );
+}
+
+const fileNameFromPath = (path: string) => path.split('/').pop() || path;
+
 function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,6 +84,7 @@ function App() {
   const [uploadedFilePath, setUploadedFilePath] = useState<string | null>(null);
   const [isEdit, setIsEdit] = useState(false);
   const [recordId, setRecordId] = useState<number | null>(null);
+  const [pendingTab, setPendingTab] = useState<TabType | null>(null);
   const [phoneErrors, setPhoneErrors] = useState({
     phone1: { error: "", isValid: false, isChecking: false, touched: false },
     phone2: { error: "", isValid: false, isChecking: false, touched: false }
@@ -55,6 +111,7 @@ function App() {
 
   useEffect(() => {
     loadLatestRecord();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadLatestRecord = async () => {
@@ -131,17 +188,6 @@ function App() {
     }
   };
 
-  const MAX_LENGTHS = {
-    phone1: 10,
-    phone2: 10,
-    name: 30,
-    post: 50,
-    department: 30,
-    location: 30,
-    assignTo: 30,
-    remark: 30,
-  };
-
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
@@ -153,8 +199,6 @@ function App() {
 
   const checkPhoneDuplicate = async (phone: string, slNo?: number) => {
     try {
-      const params = new URLSearchParams({ phone });
-      if (slNo) params.append("slNo", slNo.toString());
       const response = await fetch(API_URL.checkPhone(phone, slNo));
       return await response.json();
     } catch (error) {
@@ -206,7 +250,7 @@ function App() {
     const phone2Valid = phone2Value === "" || (phone2Value.length === 10 && !phoneErrors.phone2.error);
     const hasPhone1Error = phoneErrors.phone1.error !== "";
     const hasPhone2Error = phoneErrors.phone2.error !== "";
-    
+
     const shouldDisable = !phone1Valid || hasPhone1Error || (phone2Value !== "" && (!phone2Valid || hasPhone2Error));
     setSaveDisabled(shouldDisable);
   };
@@ -214,17 +258,17 @@ function App() {
   const handlePhone1Blur = async () => {
     const phone = formData.phone1;
     if (!phone) return;
-    
+
     if (phone.length !== 10) {
       setPhoneErrors(prev => ({ ...prev, phone1: { ...prev.phone1, error: "Phone number must be exactly 10 digits", touched: true } }));
       setSaveDisabled(true);
       return;
     }
-    
+
     setPhoneErrors(prev => ({ ...prev, phone1: { ...prev.phone1, isChecking: true, touched: true } }));
-    
+
     const result = await checkPhoneDuplicate(phone, isEdit ? recordId || undefined : undefined);
-    
+
     if (result.exists) {
       setPhoneErrors(prev => ({
         ...prev,
@@ -253,17 +297,17 @@ function App() {
       updateSaveDisabled(formData.phone1.length === 10, "");
       return;
     }
-    
+
     if (phone.length !== 10) {
       setPhoneErrors(prev => ({ ...prev, phone2: { ...prev.phone2, error: "Phone number must be exactly 10 digits", touched: true } }));
       setSaveDisabled(true);
       return;
     }
-    
+
     setPhoneErrors(prev => ({ ...prev, phone2: { ...prev.phone2, isChecking: true, touched: true } }));
-    
+
     const result = await checkPhoneDuplicate(phone, isEdit ? recordId || undefined : undefined);
-    
+
     if (result.exists) {
       setPhoneErrors(prev => ({
         ...prev,
@@ -334,7 +378,7 @@ function App() {
       const data = await parseResponse.json();
       if (data.error) {
         console.error("Parse CV error:", data.error);
-        alert("Failed to parse CV: " + data.error);
+        toast.error("Failed to parse CV: " + data.error);
       } else {
         setFormData((prev) => ({
           ...prev,
@@ -374,33 +418,33 @@ function App() {
       const data = await response.json();
       if (data.success) {
         setUploadedFilePath(data.docPath);
-        alert("CV uploaded successfully!");
+        toast.success("CV uploaded successfully!");
       }
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Failed to upload CV");
+      toast.error("Failed to upload CV");
     }
   };
 
   const handleSubmit = async () => {
     if (!formData.phone1 || formData.phone1.length !== 10) {
-      alert("Please enter a valid 10-digit phone number");
+      toast.error("Please enter a valid 10-digit phone number");
       phone1Ref.current?.focus();
       return;
     }
-    
+
     if (phoneErrors.phone1.error) {
-      alert("Please fix phone number errors");
+      toast.error("Please fix phone number errors");
       phone1Ref.current?.focus();
       return;
     }
-    
+
     if (formData.phone2 && (phoneErrors.phone2.error || formData.phone2.length !== 10)) {
-      alert("Please fix alternate phone number errors");
+      toast.error("Please fix alternate phone number errors");
       phone2Ref.current?.focus();
       return;
     }
-    
+
     try {
       if (isEdit && recordId) {
         const response = await fetch(API_URL.resourcesById(recordId), {
@@ -422,7 +466,7 @@ function App() {
         });
         const result = await response.json();
         if (result.success) {
-          alert("Record updated successfully!");
+          toast.success("Record updated successfully!");
           const refreshResponse = await fetch(API_URL.resourcesById(recordId));
           const refreshedData = await refreshResponse.json();
           setFormData({
@@ -447,7 +491,7 @@ function App() {
             setFileType("application/pdf");
           }
         } else {
-          alert("Update failed: " + result.error);
+          toast.error("Update failed: " + result.error);
         }
       } else {
         const response = await fetch(API_URL.resources, {
@@ -461,7 +505,7 @@ function App() {
         });
         const result = await response.json();
         if (result.success) {
-          alert(`Record saved successfully! Entry No: ${result.record.entryNo}`);
+          toast.success(`Record saved successfully! Entry No: ${result.record.entryNo}`);
           if (result.record) {
             setFormData({
               entryNo: String(result.record.entryNo),
@@ -488,12 +532,12 @@ function App() {
             setRecordId(result.record.slNo);
           }
         } else {
-          alert("Insert failed: " + result.error);
+          toast.error("Insert failed: " + result.error);
         }
       }
     } catch (error) {
       console.error("Submit error:", error);
-      alert("Server error");
+      toast.error("Server error");
     }
   };
 
@@ -503,12 +547,18 @@ function App() {
 
   const handleTabChange = (newTab: TabType) => {
     if (activeTab === 'entry' && isEdit && newTab === 'search') {
-      if (!confirm("Leave edit mode? Unsaved changes will be lost.")) {
-        return;
-      }
-      handleCancelEdit();
+      setPendingTab(newTab);
+      return;
     }
     setActiveTab(newTab);
+  };
+
+  const confirmLeaveEdit = () => {
+    if (pendingTab) {
+      handleCancelEdit();
+      setActiveTab(pendingTab);
+    }
+    setPendingTab(null);
   };
 
   const handleRecordSelect = async (record: EditingRecord) => {
@@ -548,452 +598,397 @@ function App() {
     }
   };
 
+  const phone1Error = phoneErrors.phone1.error || null;
+  const phone2Error = phoneErrors.phone2.error || null;
+  const attachedFileName = uploadedFilePath ? fileNameFromPath(uploadedFilePath) : null;
+  const serverDocUrl = uploadedFilePath ? API_URL.docPath(uploadedFilePath) : null;
+
   return (
-    <div
-      className="h-screen w-full relative overflow-hidden"
-      style={{
-        background: "linear-gradient(135deg, #020617 0%, #0b1120 50%, #111827 100%)",
-      }}
-    >
-      <div className="absolute inset-0 overflow-hidden">
-        <div
-          className="absolute -top-40 -left-40 w-[500px] h-[500px] rounded-full opacity-20 blur-3xl animate-pulse"
-          style={{ background: "radial-gradient(circle, rgba(59,130,246,0.6) 0%, transparent 70%)" }}
-        />
-        <div
-          className="absolute -bottom-40 -right-40 w-[500px] h-[500px] rounded-full opacity-20 blur-3xl animate-pulse"
-          style={{
-            background: "radial-gradient(circle, rgba(6,182,212,0.6) 0%, transparent 70%)",
-            animationDelay: "1s",
-          }}
-        />
-        <div
-          className="absolute top-1/2 left-1/2 w-[400px] h-[400px] rounded-full opacity-15 blur-3xl animate-pulse"
-          style={{
-            background: "radial-gradient(circle, rgba(20,184,166,0.5) 0%, transparent 70%)",
-            animationDelay: "2s",
-          }}
-        />
-      </div>
+    <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
+      <TopNav
+        tabs={[
+          { id: 'entry', label: 'Entry' },
+          { id: 'search', label: 'Search' },
+        ]}
+        activeTab={activeTab}
+        onTabChange={(id) => handleTabChange(id as TabType)}
+      />
 
-      <div className="relative z-10 h-screen flex flex-col">
-        {/* TOP HEADER - Minimal */}
-        <header className="flex-none px-3 py-2 border-b border-white/10">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              
-              
-            </div>
-            {/* <span className="text-base font-semibold text-white">RESUME MANAGEMENT</span> */}
-             {/* Spacer */}
-          </div>
-        </header>
+      <main className="flex min-h-0 flex-1 flex-col gap-4 px-6 pb-5 pt-5">
+        {activeTab === 'entry' ? (
+          <>
+            <PageHeader
+              title={isEdit ? 'Edit Entry' : 'New Entry'}
+              subtitle={
+                isEdit
+                  ? `Entry ${formData.entryNo || '—'} · ${formData.entryDate || '—'}`
+                  : 'Register a new candidate'
+              }
+              actions={
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<Plus size={14} weight="bold" />}
+                    onClick={handleNewRecord}
+                  >
+                    New
+                  </Button>
+                  {isEdit && (
+                    <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
+                      Cancel
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    icon={<Check size={14} weight="bold" />}
+                    onClick={handleSubmit}
+                    disabled={saveDisabled || !isFormValid()}
+                  >
+                    {isEdit ? 'Update' : 'Save'}
+                  </Button>
+                </>
+              }
+            />
 
-        <main className="flex-1 p-2 overflow-hidden">
-          {activeTab === 'entry' && (
-            <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 h-full">
-              
-              {/* LEFT FORM SECTION - 40% */}
-              <div className="xl:col-span-2 h-full overflow-hidden">
-                <div className="h-full overflow-y-auto custom-scroll pr-2">
-                  <GlassCard className="p-3" hover={false}>
-                    <div className="flex items-center justify-between mb-2 pb-2 border-b border-white/10">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base font-semibold text-white">Entry</span>
-                        {isEdit && recordId && (
-                          <span className="px-2 py-0.5 text-xs rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                            #{recordId}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-base font-semibold text-white">RESUME MANAGEMENT</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={handleNewRecord}
-                          className="px-2 py-1 text-xs rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 transition-all flex items-center gap-1"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          
-                          New
-                        </button>
-                        
-                        <button
-                onClick={() => handleTabChange('search')}
-                className={`px-1 py-1 text-sm font-semibold rounded-lg transition-all ${
-String(activeTab) === 'search'
-                    ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400/50'
-                    : 'bg-white/10 text-white/70 border border-white/20 hover:bg-white/20'
-                }`}
-              >
-                Search
-              </button>
-                        {/* <button
-                onClick={() => {
-                  if (activeTab === 'search' && isEdit) {
-                    if (!confirm("Leave edit mode? Unsaved changes will be lost.")) return;
-                  }
-                  handleTabChange('entry');
-                }}
-                className={`px-3 py-1.5 text-sm font-semibold rounded-lg transition-all ${
-                  activeTab === 'entry'
-                    ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400/50'
-                    : 'bg-white/10 text-white/70 border border-white/20 hover:bg-white/20'
-                }`}
-              >
-                + Entry
-              </button> */}
-                        <button
-                          onClick={handleSubmit}
-                          disabled={saveDisabled || !isFormValid()}
-                          className={`px-2 py-1 text-xs rounded-lg font-semibold transition-all flex items-center gap-1 ${
-                            saveDisabled || !isFormValid()
-                              ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                              : isEdit
-                                ? 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-400'
-                                : 'bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400'
-                          }`}
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Save
-                        </button>
-                        {isEdit && (
-                          <button
-                            onClick={loadLatestRecord}
-                            className="px-2 py-1 text-xs rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 transition-all"
-                          >
-                            Cancel
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Row 1: Entry No + Entry Date */}
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Entry No</label>
-                        <input
-                          type="text"
-                          name="entryNo"
-                          value={formData.entryNo}
-                          onChange={handleChange}
-                          disabled
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/20 text-cyan-400 outline-none disabled:opacity-60"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Entry Date</label>
-                        <input
-                          type="date"
-                          name="entryDate"
-                          value={formData.entryDate}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white outline-none focus:border-cyan-400/60 transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 2: Phone1 + Experience */}
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">
-                          Phone 1 <span className="text-red-400">*</span>
-                        </label>
-                        <input
-                          ref={phone1Ref}
-                          type="text"
-                          name="phone1"
-                          placeholder="10 digit phone"
-                          value={formData.phone1}
-                          onChange={handlePhone1Change}
-                          onBlur={handlePhone1Blur}
-                          maxLength={10}
-                          className={`w-full px-3 py-2 text-sm rounded-lg bg-white/10 border text-white placeholder-white/40 outline-none transition-all ${
-                            phoneErrors.phone1.error
-                              ? 'border-red-500 focus:border-red-400'
-                              : phoneErrors.phone1.touched && phoneErrors.phone1.isValid
-                                ? 'border-green-400'
-                                : 'border-white/20 focus:border-cyan-400/60'
-                          }`}
-                        />
-                        {phoneErrors.phone1.isChecking && (
-                          <span className="text-xs text-gray-400 mt-1">Checking...</span>
-                        )}
-                        {phoneErrors.phone1.error && (
-                          <p className="text-xs text-red-400 mt-1">{phoneErrors.phone1.error}</p>
-                        )}
-                        {phoneErrors.phone1.touched && phoneErrors.phone1.isValid && !phoneErrors.phone1.error && (
-                          <p className="text-xs text-green-400 mt-1">Valid</p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Experience</label>
-                        <input
-                          type="number"
-                          name="experience"
-                          placeholder="Years"
-                          value={formData.experience}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 3: Phone2 + Current Salary */}
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Phone 2 (Optional)</label>
-                        <input
-                          ref={phone2Ref}
-                          type="text"
-                          name="phone2"
-                          placeholder="10 digit phone (optional)"
-                          value={formData.phone2}
-                          onChange={handlePhone2Change}
-                          onBlur={handlePhone2Blur}
-                          maxLength={10}
-                          className={`w-full px-3 py-2 text-sm rounded-lg bg-white/10 border text-white placeholder-white/40 outline-none transition-all ${
-                            phoneErrors.phone2.error
-                              ? 'border-red-500 focus:border-red-400'
-                              : phoneErrors.phone2.touched && phoneErrors.phone2.isValid
-                                ? 'border-green-400'
-                                : 'border-white/20 focus:border-cyan-400/60'
-                          }`}
-                        />
-                        {phoneErrors.phone2.isChecking && (
-                          <span className="text-xs text-gray-400 mt-1">Checking...</span>
-                        )}
-                        {phoneErrors.phone2.error && (
-                          <p className="text-xs text-red-400 mt-1">{phoneErrors.phone2.error}</p>
-                        )}
-                        {phoneErrors.phone2.touched && phoneErrors.phone2.isValid && !phoneErrors.phone2.error && (
-                          <p className="text-xs text-green-400 mt-1">Valid</p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Current Salary</label>
-                        <input
-                          type="number"
-                          name="currentSalary"
-                          placeholder="Current"
-                          value={formData.currentSalary}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 4: Name + Expected Salary */}
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Name</label>
-                        <input
-                          type="text"
-                          name="name"
-                          placeholder="Candidate name"
-                          value={formData.name}
-                          onChange={handleChange}
-                          maxLength={30}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Expected Salary</label>
-                        <input
-                          type="number"
-                          name="expectedSalary"
-                          placeholder="Expected"
-                          value={formData.expectedSalary}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 5: Post + Department */}
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Post</label>
-                        <input
-                          type="text"
-                          name="post"
-                          placeholder="Enter post"
-                          value={formData.post}
-                          onChange={handleChange}
-                          maxLength={50}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Department</label>
-                        <input
-                          type="text"
-                          name="department"
-                          placeholder="Enter department"
-                          value={formData.department}
-                          onChange={handleChange}
-                          maxLength={30}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 6: Location */}
-                    <div className="mb-3">
-                      <label className="block text-xs text-gray-400 mb-1">Location</label>
-                      <input
-                        type="text"
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,440px)_minmax(0,1fr)]">
+              {/* FORM PANEL */}
+              <Panel className="flex min-h-0 flex-col overflow-hidden">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">
+                  <FormSection title="Candidate Details">
+                    <Field label="Name" htmlFor="name">
+                      <Input
+                        id="name"
+                        name="name"
+                        placeholder="Candidate name"
+                        value={formData.name}
+                        onChange={handleChange}
+                        maxLength={30}
+                      />
+                    </Field>
+                    <Field label="Post" htmlFor="post">
+                      <Input
+                        id="post"
+                        name="post"
+                        placeholder="Enter post"
+                        value={formData.post}
+                        onChange={handleChange}
+                        maxLength={50}
+                      />
+                    </Field>
+                    <Field label="Department" htmlFor="department">
+                      <Input
+                        id="department"
+                        name="department"
+                        placeholder="Enter department"
+                        value={formData.department}
+                        onChange={handleChange}
+                        maxLength={30}
+                      />
+                    </Field>
+                    <Field label="Location" htmlFor="location">
+                      <Input
+                        id="location"
                         name="location"
                         placeholder="Enter location"
                         value={formData.location}
                         onChange={handleChange}
                         maxLength={30}
-                        className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all"
                       />
-                    </div>
+                    </Field>
+                  </FormSection>
 
-                    {/* Row 7: Current Status + Assign To */}
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Current Status</label>
-                        <input
-                          type="text"
-                          name="status"
-                          placeholder="Enter status"
-                          value={formData.status || ""}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Assign To</label>
-                        <input
-                          type="text"
-                          name="assignTo"
-                          placeholder="Assign to"
-                          value={formData.assignTo || ""}
-                          onChange={handleChange}
-                          maxLength={30}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all"
-                        />
-                      </div>
-                    </div>
+                  <FormSection title="Contact" hint="Phone 1 is required and checked for duplicates">
+                    <Field
+                      label="Phone 1"
+                      htmlFor="phone1"
+                      required
+                      error={phone1Error}
+                      hint={
+                        phoneErrors.phone1.isChecking
+                          ? 'Checking…'
+                          : phoneErrors.phone1.touched && phoneErrors.phone1.isValid
+                            ? 'Valid phone number'
+                            : undefined
+                      }
+                    >
+                      <Input
+                        ref={phone1Ref}
+                        id="phone1"
+                        name="phone1"
+                        placeholder="10-digit number"
+                        value={formData.phone1}
+                        onChange={handlePhone1Change}
+                        onBlur={handlePhone1Blur}
+                        maxLength={10}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        className="font-mono"
+                        error={!!phone1Error}
+                      />
+                    </Field>
+                    <Field
+                      label="Phone 2 (Optional)"
+                      htmlFor="phone2"
+                      error={phone2Error}
+                      hint={
+                        phoneErrors.phone2.isChecking
+                          ? 'Checking…'
+                          : phoneErrors.phone2.touched && phoneErrors.phone2.isValid
+                            ? 'Valid phone number'
+                            : undefined
+                      }
+                    >
+                      <Input
+                        ref={phone2Ref}
+                        id="phone2"
+                        name="phone2"
+                        placeholder="10-digit number (optional)"
+                        value={formData.phone2}
+                        onChange={handlePhone2Change}
+                        onBlur={handlePhone2Blur}
+                        maxLength={10}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        className="font-mono"
+                        error={!!phone2Error}
+                      />
+                    </Field>
+                  </FormSection>
 
-                    {/* Row 8: Remark */}
-                    <div className="mb-3">
-                      <label className="block text-xs text-gray-400 mb-1">Remark</label>
-                      <textarea
+                  <FormSection title="Experience & Salary" gridClass="grid grid-cols-3 gap-4">
+                    <Field label="Experience" htmlFor="experience">
+                      <Input
+                        id="experience"
+                        type="number"
+                        name="experience"
+                        placeholder="0"
+                        value={formData.experience}
+                        onChange={handleChange}
+                        trailing="yrs"
+                        className="no-spinner"
+                      />
+                    </Field>
+                    <Field label="Current Salary" htmlFor="currentSalary">
+                      <Input
+                        id="currentSalary"
+                        type="number"
+                        name="currentSalary"
+                        placeholder="0"
+                        value={formData.currentSalary}
+                        onChange={handleChange}
+                        leading="₹"
+                        className="no-spinner"
+                      />
+                    </Field>
+                    <Field label="Expected Salary" htmlFor="expectedSalary">
+                      <Input
+                        id="expectedSalary"
+                        type="number"
+                        name="expectedSalary"
+                        placeholder="0"
+                        value={formData.expectedSalary}
+                        onChange={handleChange}
+                        leading="₹"
+                        className="no-spinner"
+                      />
+                    </Field>
+                  </FormSection>
+
+                  <FormSection title="Tracking">
+                    <Field label="Entry No" htmlFor="entryNo">
+                      <Input
+                        id="entryNo"
+                        name="entryNo"
+                        value={formData.entryNo}
+                        onChange={handleChange}
+                        disabled
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="Entry Date" htmlFor="entryDate">
+                      <Input
+                        id="entryDate"
+                        type="date"
+                        name="entryDate"
+                        value={formData.entryDate}
+                        onChange={handleChange}
+                      />
+                    </Field>
+                    <Field label="Current Status" htmlFor="status">
+                      <Input
+                        id="status"
+                        name="status"
+                        placeholder="Enter status"
+                        value={formData.status || ""}
+                        onChange={handleChange}
+                      />
+                    </Field>
+                    <Field label="Assigned To" htmlFor="assignTo">
+                      <Input
+                        id="assignTo"
+                        name="assignTo"
+                        placeholder="Assign to"
+                        value={formData.assignTo || ""}
+                        onChange={handleChange}
+                        maxLength={30}
+                      />
+                    </Field>
+                  </FormSection>
+
+                  <FormSection title="Notes" gridClass="grid grid-cols-1 gap-4">
+                    <Field label="Remark" htmlFor="remark">
+                      <Textarea
+                        id="remark"
                         name="remark"
                         rows={2}
-                        placeholder="Add remarks..."
+                        placeholder="Add remarks…"
                         value={formData.remark}
                         onChange={handleChange}
                         maxLength={30}
-                        className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60 transition-all resize-none"
                       />
-                    </div>
+                    </Field>
+                  </FormSection>
 
-                    {/* Row 9: Attach Document */}
-                    <div className="mb-4 p-3 rounded-lg bg-white/5 border border-white/10">
-                      <label className="block text-xs text-gray-400 mb-2">Attach Document (PDF/DOC)</label>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1">
-                          <input
-                            type="file"
-                            id="file-upload"
-                            accept=".pdf,.doc,.docx"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                          />
-                          <label
-                            htmlFor="file-upload"
-                            className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-400 cursor-pointer transition-all"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                            </svg>
-                            AI Extract
-                          </label>
-                        </div>
-                        <div className="flex-1">
-                          <input
-                            type="file"
-                            id="manual-upload"
-                            accept=".pdf,.doc,.docx"
-                            onChange={handleManualUpload}
-                            className="hidden"
-                          />
-                          <label
-                            htmlFor="manual-upload"
-                            className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-gray-300 cursor-pointer transition-all"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                            </svg>
-                            Browse CV
-                          </label>
-                        </div>
+                  <FormSection
+                    title="Document"
+                    hint="Upload a resume — AI Extract auto-fills the form"
+                    gridClass="grid grid-cols-1 gap-4"
+                  >
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="file"
+                          id="file-upload"
+                          accept=".pdf,.doc,.docx"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor="file-upload"
+                          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                        >
+                          <Sparkle size={14} weight="bold" className="text-blue-600" />
+                          AI Extract
+                        </label>
+                        <input
+                          type="file"
+                          id="manual-upload"
+                          accept=".pdf,.doc,.docx"
+                          onChange={handleManualUpload}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor="manual-upload"
+                          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                        >
+                          <UploadSimple size={14} weight="bold" />
+                          Browse CV
+                        </label>
                         {loading && (
-                          <span className="text-xs text-cyan-400 animate-pulse">Processing...</span>
+                          <span className="flex items-center gap-1.5 text-[13px] text-slate-500">
+                            <CircleNotch size={14} className="animate-spin text-blue-600" />
+                            Extracting details…
+                          </span>
                         )}
                       </div>
-                      {uploadedFilePath && (
-                        <p className="mt-2 text-xs text-green-400 truncate">
-                          ✓ Saved: {uploadedFilePath}
-                        </p>
+                      {attachedFileName && (
+                        <div className="mt-3 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
+                          <FilePdf size={15} className="shrink-0 text-emerald-600" />
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-700">
+                            {attachedFileName}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-700">
+                            <Check size={12} weight="bold" />
+                            Saved
+                          </span>
+                        </div>
                       )}
                     </div>
-                  </GlassCard>
+                  </FormSection>
                 </div>
-              </div>
-              <div className="xl:col-span-3">
-                <div className="h-full rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 overflow-hidden">
+              </Panel>
+
+              {/* PREVIEW PANEL */}
+              <Panel className="flex min-h-0 flex-col overflow-hidden">
+                <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                    <FileText size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-semibold text-slate-900">Resume Preview</h2>
+                    <p className="truncate text-[13px] text-slate-500">
+                      {attachedFileName ?? 'No document attached'}
+                    </p>
+                  </div>
+                  {serverDocUrl && previewUrl && !previewUrl.startsWith('data:') && (
+                    <a
+                      className="ml-auto shrink-0"
+                      href={serverDocUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="ghost" size="sm" icon={<ArrowSquareOut size={14} weight="bold" />}>
+                        Open
+                      </Button>
+                    </a>
+                  )}
+                </div>
+                <div className="min-h-0 flex-1 bg-slate-100 p-4">
                   {previewUrl ? (
                     <iframe
+                      key={previewUrl}
                       src={previewUrl}
-                      className="w-full h-full"
-                      title="PDF Preview"
+                      title="Resume preview"
+                      className="preview-fade h-full w-full rounded-lg border border-slate-200 bg-white shadow-panel"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <div className="text-center text-gray-500 p-8">
-                        <div className="relative mb-6">
-                          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-full blur-xl" />
-                          <svg className="relative w-20 h-20 mx-auto text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
+                    <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white">
+                      <div className="text-center">
+                        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
+                          <FileText size={22} />
                         </div>
-                        <p className="text-lg font-medium mb-2 text-white/40">No document uploaded</p>
-                        <p className="text-sm text-white/30">Upload a PDF or image to see preview</p>
+                        <p className="text-sm font-semibold text-slate-700">No document uploaded</p>
+                        <p className="mt-1 text-[13px] text-slate-500">
+                          Upload a PDF or DOC to preview it here.
+                        </p>
                       </div>
                     </div>
                   )}
                 </div>
-              </div>
+              </Panel>
             </div>
-          )}
+          </>
+        ) : (
+          <SearchView
+            onRecordDoubleClick={handleRecordSelect}
+            onBack={() => handleTabChange('entry')}
+          />
+        )}
+      </main>
 
-          {activeTab === 'search' && (
-            <SearchView onRecordDoubleClick={handleRecordSelect} />
-          )}
-        </main>
-      </div>
+      <Toaster />
+
+      <ConfirmDialog
+        open={pendingTab !== null}
+        title="Discard changes?"
+        message="You have unsaved changes in the entry form. Switching to Search will discard them."
+        confirmLabel="Discard"
+        onConfirm={confirmLeaveEdit}
+        onCancel={() => setPendingTab(null)}
+      />
 
       {loading && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <GlassCard className="p-8 max-w-sm mx-4">
-            <div className="flex flex-col items-center">
-              <div className="relative w-16 h-16 mb-4">
-                <div className="absolute inset-0 border-4 border-cyan-500/20 rounded-full" />
-                <div className="absolute inset-0 border-4 border-transparent border-t-cyan-400 rounded-full animate-spin" />
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-popover">
+            <div className="flex items-center gap-3">
+              <CircleNotch size={20} className="shrink-0 animate-spin text-blue-600" />
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Analyzing resume…</p>
+                <p className="text-[13px] text-slate-500">Extracting candidate details</p>
               </div>
-              <p className="text-white font-medium mb-2">AI is analyzing the resume...</p>
-              <p className="text-sm text-white/60">Please wait</p>
             </div>
-          </GlassCard>
+          </div>
         </div>
       )}
     </div>

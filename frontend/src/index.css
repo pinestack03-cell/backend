@@ -1,54 +1,92 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Elevation scale: panel (resting) < lifted (toasts) < popover (modals) */
+  --shadow-panel: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --shadow-lifted: 0 6px 16px -6px rgb(15 23 42 / 0.12);
+  --shadow-popover: 0 24px 48px -16px rgb(15 23 42 / 0.28);
+
+  /* Layer scale: modal surfaces < toast */
+  --z-modal: 60;
+  --z-toast: 80;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
-  margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-slate-50);
+  color: var(--color-slate-900);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-.custom-scroll::-webkit-scrollbar {
-  width: 6px;
+::selection {
+  background: rgb(219 234 254);
 }
 
-.custom-scroll::-webkit-scrollbar-track {
+/* Thin, quiet but clearly visible scrollbars for the whole app */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.custom-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
+*::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184);
+  border-radius: 8px;
 }
 
-.custom-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.4);
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139);
 }
 
-.custom-scroll {
-  scroll-behavior: smooth;
-  overflow-y: auto;
-  overflow-x: hidden;
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
+/* Hide number input spinners */
 .no-spinner::-webkit-outer-spin-button,
 .no-spinner::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 
-.no-spinner[type=number] {
+.no-spinner[type="number"] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
+/* --- Legacy form classes (kept for RecordModal) --- */
 .entry-form-grid {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .form-row {
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 
 .row-1 {
@@ -76,88 +114,119 @@ body {
 .form-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .form-field label {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
-  color: #9ca3af;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--color-slate-700);
 }
 
 .form-field input,
 .form-field select {
-  padding: 10px 14px;
+  height: 36px;
+  padding: 0 12px;
   font-size: 14px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
+  border-radius: 8px;
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-300);
+  color: var(--color-slate-900);
   outline: none;
-  transition: all 0.2s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .form-field input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--color-slate-400);
 }
 
 .form-field input:focus,
 .form-field select:focus {
-  border-color: rgba(6, 182, 212, 0.6);
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.3);
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.2);
+}
+
+.form-field input:disabled {
+  background: var(--color-slate-50);
+  color: var(--color-slate-500);
 }
 
 .form-field select {
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2306b6d4'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
-  background-size: 18px;
+  background-size: 16px;
 }
 
 .form-field select option {
-  background: #1e293b;
-  color: white;
-}
-
-.name-field input {
-  font-size: 16px;
-  font-weight: 500;
-  padding: 12px 14px;
-}
-
-.experience-field input {
-  padding: 12px 14px;
-}
-
-.post-field input {
-  font-size: 15px;
+  background: var(--color-white);
+  color: var(--color-slate-900);
 }
 
 .field-value {
-  padding: 10px 14px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
   font-size: 14px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  background: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
+  color: var(--color-slate-800);
   margin: 0;
 }
 
 .field-value.mono {
-  font-family: monospace;
-  color: #22d3ee;
+  font-family: var(--font-mono);
+  color: var(--color-blue-700);
 }
 
 .field-value.badge {
   display: inline-flex;
-  padding: 8px 14px;
-  background: rgba(59, 130, 246, 0.2);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  color: #93c5fd;
-  border-radius: 10px;
+  width: fit-content;
+  padding: 0 12px;
+  background: var(--color-blue-50);
+  border: 1px solid var(--color-blue-200);
+  color: var(--color-blue-700);
+  border-radius: 8px;
   font-weight: 500;
+}
+
+/* Toast entry animation */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Preview swap (iframe) */
+@keyframes preview-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast-enter {
+    animation: toast-in 0.18s ease-out;
+  }
+  .preview-fade {
+    animation: preview-fade 0.2s ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin {
+    animation: none;
+  }
 }

@@ -1,5 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
-import { GlassCard } from './index';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  CaretDown,
+  CaretLeft,
+  CaretRight,
+  FileText,
+  MagnifyingGlass,
+  PencilSimple,
+} from '@phosphor-icons/react';
+import { Button, EmptyState, Field, Input, PageHeader, Panel, Select, Skeleton, StatusBadge } from './index';
 import { API_URL } from '../utils/api';
 
 interface CandidateRecord {
@@ -22,18 +30,44 @@ interface CandidateRecord {
 
 interface SearchViewProps {
   onRecordDoubleClick?: (record: CandidateRecord) => void;
+  onBack?: () => void;
 }
 
-export function SearchView({ onRecordDoubleClick }: SearchViewProps) {
-  const [filters, setFilters] = useState({
-    name: '',
-    phone1: '',
-    phone2: '',
-    post: '',
-    department: '',
-    location: '',
-    status: ''
-  });
+const EMPTY_FILTERS = {
+  name: '',
+  phone1: '',
+  phone2: '',
+  post: '',
+  department: '',
+  location: '',
+  status: '',
+};
+
+const LIST_MIN_WIDTH = 280;
+const LIST_MAX_WIDTH = 640;
+const LIST_DEFAULT_WIDTH = 384;
+const LIST_WIDTH_KEY = 'search-list-width';
+
+const formatSalary = (value?: number) => {
+  if (!value || value === 0) return '';
+  return `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value)}`;
+};
+
+const formatDate = (dateString?: string) => {
+  if (!dateString) return '';
+  try {
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [records, setRecords] = useState<CandidateRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<CandidateRecord | null>(null);
@@ -43,10 +77,75 @@ export function SearchView({ onRecordDoubleClick }: SearchViewProps) {
   const [hasSearched, setHasSearched] = useState(false);
   const [departments, setDepartments] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(true);
+  const [listWidth, setListWidth] = useState<number>(() => {
+    const saved = Number(window.localStorage.getItem(LIST_WIDTH_KEY));
+    return saved >= LIST_MIN_WIDTH && saved <= LIST_MAX_WIDTH ? saved : LIST_DEFAULT_WIDTH;
+  });
+  const [isXl, setIsXl] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
+
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const isResizing = useRef(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)');
+    const onChange = (e: MediaQueryListEvent) => setIsXl(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(LIST_WIDTH_KEY, String(listWidth));
+  }, [listWidth]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isResizing.current || !gridRef.current) return;
+      const rect = gridRef.current.getBoundingClientRect();
+      setListWidth(Math.min(LIST_MAX_WIDTH, Math.max(LIST_MIN_WIDTH, e.clientX - rect.left)));
+    };
+    const onUp = () => {
+      if (!isResizing.current) return;
+      isResizing.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        document.getElementById('filter-name')?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const startResize = (e: React.MouseEvent) => {
+    if (!isXl) return;
+    isResizing.current = true;
+    e.preventDefault();
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const resetListWidth = () => setListWidth(LIST_DEFAULT_WIDTH);
 
   useEffect(() => {
     fetchDepartments();
-    fetchRecords(1);
+    fetchRecords(1, { resetSelection: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDepartments = async () => {
@@ -59,13 +158,13 @@ export function SearchView({ onRecordDoubleClick }: SearchViewProps) {
     }
   };
 
-  const fetchRecords = useCallback(async (pageNum: number) => {
+  const fetchRecords = useCallback(async (pageNum: number, options?: { resetSelection?: boolean }) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       params.append('page', pageNum.toString());
       params.append('limit', '10');
-      
+
       if (filters.name) params.append('name', filters.name);
       if (filters.phone1) params.append('phone1', filters.phone1);
       if (filters.phone2) params.append('phone2', filters.phone2);
@@ -73,19 +172,23 @@ export function SearchView({ onRecordDoubleClick }: SearchViewProps) {
       if (filters.department) params.append('department', filters.department);
       if (filters.location) params.append('location', filters.location);
       if (filters.status) params.append('status', filters.status);
-      
+
       const response = await fetch(`${API_URL.resourcesSearch}?${params}`);
       const data = await response.json();
-      
+
       setRecords(data.records || []);
       setTotalRecords(data.total || 0);
       setTotalPages(data.totalPages || 1);
       setPage(data.page || 1);
       setHasSearched(true);
-      
-      if (data.records?.length > 0 && !selectedRecord) {
+
+      if (options?.resetSelection) {
+        setSelectedRecord(data.records?.[0] ?? null);
+      } else if (data.records?.length > 0 && !selectedRecord) {
         setSelectedRecord(data.records[0]);
       }
+
+      listScrollRef.current?.scrollTo({ top: 0 });
     } catch (error) {
       console.error('Search error:', error);
       setRecords([]);
@@ -94,21 +197,13 @@ export function SearchView({ onRecordDoubleClick }: SearchViewProps) {
   }, [filters, selectedRecord]);
 
   const handleSearch = () => {
-    fetchRecords(1);
+    fetchRecords(1, { resetSelection: true });
   };
 
   const handleClearFilters = () => {
-    setFilters({
-      name: '',
-      phone1: '',
-      phone2: '',
-      post: '',
-      department: '',
-      location: '',
-      status: ''
-    });
+    setFilters(EMPTY_FILTERS);
     setSelectedRecord(null);
-    fetchRecords(1);
+    fetchRecords(1, { resetSelection: true });
   };
 
   const handleFilterChange = (field: string, value: string) => {
@@ -138,258 +233,358 @@ export function SearchView({ onRecordDoubleClick }: SearchViewProps) {
     }
   };
 
-  const formatSalary = (value?: number) => {
-    if (!value || value === 0) return '-';
-    return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value);
-  };
+  const selectedDocUrl = selectedRecord?.docPath ? API_URL.docPath(selectedRecord.docPath) : null;
+
+  const activeFilterCount = Object.values(filters).filter((value) => value.trim() !== '').length;
+
+  const previewMeta: { label: string; value: string; mono?: boolean }[] = [];
+  if (selectedRecord?.entryNo) previewMeta.push({ label: 'Entry', value: selectedRecord.entryNo, mono: true });
+  if (selectedRecord?.datez) previewMeta.push({ label: 'Date', value: formatDate(selectedRecord.datez) });
+  if (selectedRecord?.experience) previewMeta.push({ label: 'Experience', value: `${selectedRecord.experience} yrs` });
+  if (selectedRecord?.location) previewMeta.push({ label: 'Location', value: selectedRecord.location });
+  const cur = formatSalary(selectedRecord?.currentSalary);
+  const exp = formatSalary(selectedRecord?.expectedSalary);
+  const salaryLabel = cur && exp ? `${cur} → ${exp}` : cur || exp;
+  if (salaryLabel) previewMeta.push({ label: 'Salary', value: salaryLabel });
 
   return (
-    <div className="h-full -mt-1">
-      <GlassCard className="h-full p-2" hover={false}>
-        <div className="flex flex-col h-full -mt-1">
-          {/* FILTERS SECTION - Collapsible Header */}
-          <div className="flex-shrink-0 pb-2 border-b border-white/10">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="p-1 rounded hover:bg-white/10 transition-colors"
-                >
-                  <svg 
-                    className={`w-4 h-4 text-white/70 transition-transform ${showFilters ? 'rotate-90' : ''}`} 
-                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-                <h3 className="text-sm font-semibold text-white">Search</h3>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <PageHeader
+        title="Candidate Search"
+        subtitle="Find candidates by name, phone, department, or status"
+        onBack={onBack}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+              Clear
+            </Button>
+            <Button size="sm" icon={<MagnifyingGlass size={14} weight="bold" />} onClick={handleSearch}>
+              Search
+            </Button>
+          </>
+        }
+      />
+
+      {/* FILTERS */}
+      <Panel className="shrink-0">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          aria-expanded={showFilters}
+          className="flex w-full items-center gap-2 px-4 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+        >
+          <CaretDown
+            size={13}
+            weight="bold"
+            className={`text-slate-400 transition-transform duration-150 ${showFilters ? '' : '-rotate-90'}`}
+          />
+          <span className="text-[13px] font-medium text-slate-700">Filters</span>
+          {activeFilterCount > 0 && (
+            <span className="rounded-full border border-blue-200 bg-blue-50 px-1.5 py-px text-xs font-medium text-blue-700">
+              {activeFilterCount} active
+            </span>
+          )}
+          {!showFilters && (
+            <span className="text-[13px] text-slate-400">Expand to refine your search</span>
+          )}
+        </button>
+        {showFilters && (
+          <div
+            className="grid grid-cols-2 gap-3 border-t border-slate-100 px-4 pb-4 pt-3 md:grid-cols-3 xl:grid-cols-4"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
+                e.preventDefault();
+                handleSearch();
+              }
+            }}
+          >
+            <Field label="Name" htmlFor="filter-name">
+              <Input
+                id="filter-name"
+                type="text"
+                placeholder="Candidate name"
+                autoComplete="off"
+                value={filters.name}
+                onChange={(e) => handleFilterChange('name', e.target.value)}
+              />
+            </Field>
+            <Field label="Phone 1" htmlFor="filter-phone1">
+              <Input
+                id="filter-phone1"
+                type="text"
+                placeholder="10-digit number"
+                autoComplete="off"
+                value={filters.phone1}
+                onChange={(e) => handleFilterChange('phone1', e.target.value)}
+                className="font-mono"
+              />
+            </Field>
+            <Field label="Phone 2" htmlFor="filter-phone2">
+              <Input
+                id="filter-phone2"
+                type="text"
+                placeholder="10-digit number"
+                autoComplete="off"
+                value={filters.phone2}
+                onChange={(e) => handleFilterChange('phone2', e.target.value)}
+                className="font-mono"
+              />
+            </Field>
+            <Field label="Post" htmlFor="filter-post">
+              <Input
+                id="filter-post"
+                type="text"
+                placeholder="Enter post"
+                autoComplete="off"
+                value={filters.post}
+                onChange={(e) => handleFilterChange('post', e.target.value)}
+              />
+            </Field>
+            <Field label="Department" htmlFor="filter-department">
+              <Select
+                id="filter-department"
+                value={filters.department}
+                onChange={(e) => handleFilterChange('department', e.target.value)}
+              >
+                <option value="">All departments</option>
+                {departments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Location" htmlFor="filter-location">
+              <Input
+                id="filter-location"
+                type="text"
+                placeholder="Enter location"
+                autoComplete="off"
+                value={filters.location}
+                onChange={(e) => handleFilterChange('location', e.target.value)}
+              />
+            </Field>
+            <Field label="Status" htmlFor="filter-status">
+              <Input
+                id="filter-status"
+                type="text"
+                placeholder="e.g. notice_period"
+                autoComplete="off"
+                value={filters.status}
+                onChange={(e) => handleFilterChange('status', e.target.value)}
+              />
+            </Field>
+          </div>
+        )}
+      </Panel>
+
+      {/* RESULTS + PREVIEW */}
+      <div
+        ref={gridRef}
+        className="relative grid min-h-0 flex-1 grid-cols-1 gap-4"
+        style={isXl ? { gridTemplateColumns: `${listWidth}px minmax(0, 1fr)` } : undefined}
+      >
+        {isXl && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize candidate list"
+            title="Drag to resize · double-click to reset"
+            onMouseDown={startResize}
+            onDoubleClick={resetListWidth}
+            className="absolute inset-y-0 z-10 w-1.5 -translate-x-1/2 cursor-col-resize rounded-full transition-colors duration-150 hover:bg-blue-500/50"
+            style={{ left: `calc(${listWidth}px + 8px)` }}
+          />
+        )}
+        {/* LIST */}
+        <Panel className="flex min-h-0 flex-col overflow-hidden">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
+            <h2 className="text-sm font-semibold text-slate-900">Candidates</h2>
+            <span className="text-xs text-slate-500">{totalRecords} results</span>
+          </div>
+
+          <div
+            ref={listScrollRef}
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
+          >
+            {loading ? (
+              <div className="space-y-2.5">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div key={i} className="rounded-lg border border-slate-200 p-3.5">
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-4 w-2/5" />
+                      <Skeleton className="h-5 w-20 rounded-full" />
+                    </div>
+                    <Skeleton className="mt-2.5 h-3 w-4/5" />
+                    <Skeleton className="mt-3 h-3 w-3/5" />
+                  </div>
+                ))}
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleSearch}
-                  className="px-2 py-1 text-xs rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-400 transition-all flex items-center gap-1"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  Search
-                </button>
-                <button
-                  onClick={handleClearFilters}
-                  className="px-2 py-1 text-xs rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white/70 transition-all"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-            
-            {showFilters && (
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-                <input
-                  type="text"
-                  placeholder="Name"
-                  value={filters.name}
-                  onChange={(e) => handleFilterChange('name', e.target.value)}
-                  className="px-2 py-1 text-xs rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60"
-                />
-                <input
-                  type="text"
-                  placeholder="Phone 1"
-                  value={filters.phone1}
-                  onChange={(e) => handleFilterChange('phone1', e.target.value)}
-                  className="px-2 py-1 text-xs rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60"
-                />
-                <input
-                  type="text"
-                  placeholder="Phone 2"
-                  value={filters.phone2}
-                  onChange={(e) => handleFilterChange('phone2', e.target.value)}
-                  className="px-2 py-1 text-xs rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60"
-                />
-                <input
-                  type="text"
-                  placeholder="Post"
-                  value={filters.post}
-                  onChange={(e) => handleFilterChange('post', e.target.value)}
-                  className="px-2 py-1 text-xs rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60"
-                />
-                <select
-                  value={filters.department}
-                  onChange={(e) => handleFilterChange('department', e.target.value)}
-                  className="px-2 py-1 text-xs rounded-lg bg-white/10 border border-white/20 text-white outline-none focus:border-cyan-400/60"
-                >
-                  <option value="" className="bg-gray-800">Dept</option>
-                  {departments.map(dept => (
-                    <option key={dept} value={dept} className="bg-gray-800">{dept}</option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  placeholder="Location"
-                  value={filters.location}
-                  onChange={(e) => handleFilterChange('location', e.target.value)}
-                  className="px-2 py-1 text-xs rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60"
-                />
-                <input
-                  type="text"
-                  placeholder="Status"
-                  value={filters.status}
-                  onChange={(e) => handleFilterChange('status', e.target.value)}
-                  className="px-2 py-1 text-xs rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:border-cyan-400/60"
-                />
-                <div className="text-xs text-gray-400 flex items-center px-2">
-                  {totalRecords} records
-                </div>
+            ) : records.length === 0 && hasSearched ? (
+              <EmptyState
+                icon={<MagnifyingGlass size={22} />}
+                title="No candidates found"
+                description="Try adjusting your filters."
+              />
+            ) : records.length === 0 ? (
+              <EmptyState
+                icon={<MagnifyingGlass size={22} />}
+                title="Search candidates"
+                description="Use the filters above to find candidates."
+              />
+            ) : (
+              <div className="space-y-2">
+                {records.map((record) => {
+                  const selected = selectedRecord?.slNo === record.slNo;
+                  return (
+                    <div
+                      key={record.slNo}
+                      onClick={() => handleCardClick(record)}
+                      onDoubleClick={() => handleCardDoubleClick(record)}
+                      title="Double-click to edit"
+                      className={`relative cursor-pointer rounded-lg border px-3.5 py-3 transition-colors duration-150 ${
+                        selected
+                          ? 'border-blue-500 bg-blue-50/70'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {selected && (
+                        <span className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-full bg-blue-600" />
+                      )}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">
+                            {record.name || '—'}
+                          </p>
+                          <p className="mt-0.5 truncate text-[13px] text-slate-500">
+                            {[record.post, record.department, record.location].filter(Boolean).join(' · ') || '—'}
+                          </p>
+                        </div>
+                        <StatusBadge status={record.status} />
+                      </div>
+                      <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5">
+                        <div className="flex min-w-0 items-center gap-2 font-mono text-xs text-slate-600">
+                          <span className="truncate">{record.phone1 || '—'}</span>
+                          {record.phone2 && (
+                            <span className="truncate text-slate-400">{record.phone2}</span>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-xs text-slate-400">
+                          {formatSalary(record.currentSalary) && formatSalary(record.expectedSalary) ? (
+                            <>
+                              <span className="font-medium text-slate-600">
+                                {formatSalary(record.currentSalary)}
+                              </span>
+                              <span className="mx-1 text-slate-300">→</span>
+                              {formatSalary(record.expectedSalary)}
+                            </>
+                          ) : (
+                            <span className="text-slate-400">
+                              {formatSalary(record.currentSalary) || formatSalary(record.expectedSalary) || '—'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* MAIN CONTENT */}
-          <div className="flex flex-1 gap-3 overflow-hidden">
-            {/* LEFT SIDE - CARD LIST (40%) */}
-            <div className="w-[40%] h-full flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto pr-2 custom-scroll">
-                <div className="flex flex-col gap-2">
-                  {loading ? (
-                    <div className="flex items-center justify-center h-32">
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin mb-2" />
-                        <p className="text-xs text-gray-400">Loading...</p>
-                      </div>
-                    </div>
-                  ) : records.length === 0 && hasSearched ? (
-                    <div className="flex items-center justify-center h-32">
-                      <div className="text-center text-gray-400">
-                        <p className="text-sm font-medium mb-1">No records found</p>
-                        <p className="text-xs text-gray-500">Try adjusting your filters</p>
-                      </div>
-                    </div>
-                  ) : records.length === 0 ? (
-                    <div className="flex items-center justify-center h-32">
-                      <div className="text-center text-gray-400">
-                        <p className="text-sm font-medium mb-1 text-white/70">Search Resources</p>
-                        <p className="text-xs text-gray-500">Use filters above to search</p>
-                      </div>
-                    </div>
-                  ) : (
-                    records.map((record) => (
-                      <div
-                        key={record.slNo}
-                        onClick={() => handleCardClick(record)}
-                        onDoubleClick={() => handleCardDoubleClick(record)}
-                        className={`p-3 rounded-lg bg-white/10 backdrop-blur-xl border transition-all cursor-pointer hover:bg-white/15 ${
-                          selectedRecord?.slNo === record.slNo
-                            ? 'border-blue-400 bg-blue-500/10'
-                            : 'border-white/10 hover:border-white/20'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h4 className="text-base font-semibold text-white">{record.name || '-'}</h4>
-                            <p className="text-sm text-cyan-400">Entry: {record.entryNo}</p>
-                          </div>
-                          {record.status && (
-                            <span className="px-2 py-0.5 text-xs rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
-                              {record.status}
-                            </span>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-400">
-                          <div><span className="text-gray-500">P1:</span> {record.phone1 || '-'}</div>
-                          <div><span className="text-gray-500">P2:</span> {record.phone2 || '-'}</div>
-                          <div><span className="text-gray-500">Post:</span> {record.post || '-'}</div>
-                          <div><span className="text-gray-500">Dept:</span> {record.department || '-'}</div>
-                          <div><span className="text-gray-500">Loc:</span> {record.location || '-'}</div>
-                          <div><span className="text-gray-500">Exp:</span> {record.experience || 0}yr</div>
-                          <div><span className="text-gray-500">Cur:</span> ₹{formatSalary(record.currentSalary)}</div>
-                          <div><span className="text-gray-500">Exp:</span> ₹{formatSalary(record.expectedSalary)}</div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+          {totalPages > 1 && (
+            <div className="flex shrink-0 items-center justify-between border-t border-slate-200 px-3 py-2.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<CaretLeft size={13} weight="bold" />}
+                onClick={handlePrevPage}
+                disabled={page === 1}
+              >
+                Prev
+              </Button>
+              <span className="text-[13px] text-slate-500">
+                Page <span className="font-medium text-slate-700">{page}</span> of {totalPages}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleNextPage}
+                disabled={page === totalPages}
+              >
+                Next
+                <CaretRight size={13} weight="bold" />
+              </Button>
+            </div>
+          )}
+        </Panel>
+
+        {/* PREVIEW */}
+        <Panel className="flex min-h-0 flex-col overflow-hidden">
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="truncate text-sm font-semibold text-slate-900">
+                  {selectedRecord?.name || 'Resume Preview'}
+                </h3>
+                {selectedRecord?.status && <StatusBadge status={selectedRecord.status} />}
               </div>
-              {/* PAGINATION - Below cards */}
-              {totalPages > 1 && (
-                <div className="flex-shrink-0 flex items-center justify-between pt-2 mt-2 border-t border-white/10">
-                  <button
-                    onClick={handlePrevPage}
-                    disabled={page === 1}
-                    className={`px-2 py-1 text-xs rounded border transition-all flex items-center gap-1 ${
-                      page === 1
-                        ? 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-                        : 'bg-white/10 border-white/20 text-white hover:bg-white/20'
-                    }`}
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                    Prev
-                  </button>
-                  <span className="text-xs text-gray-400">
-                    {page}/{totalPages}
-                  </span>
-                  <button
-                    onClick={handleNextPage}
-                    disabled={page === totalPages}
-                    className={`px-2 py-1 text-xs rounded border transition-all flex items-center gap-1 ${
-                      page === totalPages
-                        ? 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-                        : 'bg-white/10 border-white/20 text-white hover:bg-white/20'
-                    }`}
-                  >
-                    Next
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
+              {selectedRecord && previewMeta.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                  {previewMeta.map((item, index) => (
+                    <span key={item.label} className="flex items-center gap-x-2">
+                      {index > 0 && <span className="h-3 w-px bg-slate-200" />}
+                      <span className="text-slate-400">{item.label}</span>
+                      <span className={`font-medium text-slate-700 ${item.mono ? 'font-mono text-xs' : ''}`}>
+                        {item.value}
+                      </span>
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
-
-            {/* RIGHT SIDE - RESUME VIEWER (60%) */}
-            <div className="w-[60%] flex flex-col">
-              <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10">
-                <div className="p-1.5 rounded-lg bg-cyan-500/20 border border-cyan-500/30">
-                  <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                </div>
-                <h3 className="text-base font-semibold text-white">Resume Preview</h3>
-                {selectedRecord?.docPath ? (
-                  <span className="ml-auto text-xs text-green-400">✓ Document attached</span>
-                ) : (
-                  <span className="ml-auto text-xs text-gray-500">No document</span>
-                )}
-              </div>
-              
-              <div className="flex-1 rounded-lg bg-white/5 border border-white/20 overflow-hidden">
-                {selectedRecord?.docPath ? (
-                  <iframe
-                    src={API_URL.docPath(selectedRecord.docPath)}
-                    className="w-full h-full min-h-[400px]"
-                    title="Resume Preview"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <div className="text-center text-gray-500 p-4">
-                      <svg className="w-12 h-12 mx-auto mb-3 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      {selectedRecord ? (
-                        <p className="text-sm text-gray-400">No document attached to this record</p>
-                      ) : (
-                        <p className="text-sm text-gray-400">Select a record to preview resume</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {selectedDocUrl && (
+                <a href={selectedDocUrl} target="_blank" rel="noopener noreferrer">
+                  <Button variant="secondary" size="sm" icon={<FileText size={14} weight="bold" />}>
+                    Open
+                  </Button>
+                </a>
+              )}
+              {selectedRecord && onRecordDoubleClick && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<PencilSimple size={14} weight="bold" />}
+                  onClick={() => onRecordDoubleClick(selectedRecord)}
+                >
+                  Edit
+                </Button>
+              )}
             </div>
           </div>
-        </div>
-      </GlassCard>
+
+          <div className="min-h-0 flex-1 overscroll-contain bg-slate-100 p-4">
+            {selectedRecord?.docPath ? (
+              <iframe
+                key={selectedRecord.docPath}
+                src={API_URL.docPath(selectedRecord.docPath)}
+                className="preview-fade h-full w-full rounded-lg border border-slate-200 bg-white shadow-panel"
+                title="Resume Preview"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white">
+                <EmptyState
+                  icon={<FileText size={22} />}
+                  title={selectedRecord ? 'No resume attached' : 'No candidate selected'}
+                  description={
+                    selectedRecord
+                      ? 'This candidate has no document uploaded.'
+                      : 'Select a candidate from the list to preview their resume.'
+                  }
+                />
+              </div>
+            )}
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }

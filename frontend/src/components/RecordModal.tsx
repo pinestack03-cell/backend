@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
-import { DocumentViewer } from './DocumentViewer';
+import { useEffect, useRef, useState } from 'react';
+import { FileText, PencilSimple, X } from '@phosphor-icons/react';
+import { Button, DocumentViewer, IconButton } from './index';
 import { API_URL } from '../utils/api';
+import { toast } from '../utils/toast';
 
 interface RecordData {
   slNo: number;
@@ -74,11 +76,11 @@ export function RecordModal({ isOpen, onClose, record, onUpdate }: RecordModalPr
     if (file) {
       const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
       if (!allowedTypes.includes(file.type)) {
-        alert('❌ Only PDF, DOC, and DOCX files are allowed');
+        toast.error('Only PDF, DOC, and DOCX files are allowed');
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
-        alert('❌ File size must be less than 5MB');
+        toast.error('File size must be less than 5MB');
         return;
       }
       setSelectedFile(file);
@@ -103,13 +105,13 @@ export function RecordModal({ isOpen, onClose, record, onUpdate }: RecordModalPr
         const data = await response.json();
         setDocPath(data.docPath);
         setSelectedFile(null);
-        alert('✅ CV uploaded successfully!');
+        toast.success('CV uploaded successfully!');
       } else {
         throw new Error('Upload failed');
       }
     } catch (error) {
-      console.error('❌ Upload error:', error);
-      alert('❌ Failed to upload CV');
+      console.error('Upload error:', error);
+      toast.error('Failed to upload CV');
     }
     setUploading(false);
   };
@@ -133,13 +135,13 @@ export function RecordModal({ isOpen, onClose, record, onUpdate }: RecordModalPr
       if (response.ok) {
         onUpdate({ ...formData, docPath: docPath || undefined });
         onClose();
-        alert('✅ Record updated successfully!');
+        toast.success('Record updated successfully!');
       } else {
         throw new Error('Update failed');
       }
     } catch (error) {
-      console.error('❌ Error updating record:', error);
-      alert('❌ Failed to update record');
+      console.error('Error updating record:', error);
+      toast.error('Failed to update record');
     }
     setLoading(false);
   };
@@ -159,85 +161,58 @@ export function RecordModal({ isOpen, onClose, record, onUpdate }: RecordModalPr
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 z-modal flex items-center justify-center p-4"
         onClick={onClose}
       >
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-        
+        <div className="absolute inset-0 bg-slate-900/40" />
+
         <div
-          className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl"
+          className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-popover"
           onClick={(e) => e.stopPropagation()}
-          style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%)' }}
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between p-6 border-b border-white/10 bg-gradient-to-r from-slate-900/80 to-slate-800/80 backdrop-blur-xl rounded-t-3xl">
-            <div>
-              <h2 className="text-xl font-bold text-white">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold tracking-tight text-slate-900">
                 {isEditing ? 'Edit Record' : 'Record Details'}
               </h2>
-              <p className="text-sm text-gray-400 mt-1">
-                Sl No: {formData.slNo} | Entry No: {formData.entryNo}
+              <p className="mt-0.5 truncate text-[13px] text-slate-500">
+                Sl No: {formData.slNo} · Entry No: {formData.entryNo}
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2">
               {!isEditing ? (
-                <button
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<PencilSimple size={14} />}
                   onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 text-white font-medium shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30 transition-all duration-300 transform hover:scale-[1.02]"
                 >
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Edit
-                  </span>
-                </button>
+                  Edit
+                </Button>
               ) : (
                 <>
-                  <button
-                    onClick={handleCancel}
-                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium transition-all duration-300"
-                  >
+                  <Button size="sm" variant="ghost" onClick={handleCancel}>
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    size="sm"
                     onClick={handleSave}
                     disabled={loading}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-green-500 to-emerald-400 text-white font-medium shadow-lg shadow-green-500/20 hover:shadow-green-500/30 transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50"
                   >
-                    {loading ? (
-                      <span className="flex items-center gap-2">
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Saving...
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Save Changes
-                      </span>
-                    )}
-                  </button>
+                    {loading ? 'Saving…' : 'Save Changes'}
+                  </Button>
                 </>
               )}
-              <button
-                onClick={onClose}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white/60 hover:text-white transition-all duration-200"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <IconButton label="Close" onClick={onClose}>
+                <X size={15} />
+              </IconButton>
             </div>
           </div>
 
-          <div className="p-6">
-            <div className="mb-6 p-4 rounded-xl bg-white/5 border border-white/10">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">CV / Document</h3>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+            <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-[13px] font-semibold text-slate-900">CV / Document</h3>
                 {isEditing && (
                   <input
                     type="file"
@@ -248,69 +223,57 @@ export function RecordModal({ isOpen, onClose, record, onUpdate }: RecordModalPr
                   />
                 )}
               </div>
-              
+
               {docPath || selectedFile ? (
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl bg-cyan-500/20 border border-cyan-500/30">
-                      <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-600">
+                      <FileText size={18} />
                     </div>
-                    <div>
-                      <p className="text-white font-medium">{displayFileName}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{displayFileName}</p>
                       {selectedFile && (
-                        <p className="text-xs text-cyan-400">New file selected</p>
+                        <p className="text-xs text-blue-600">New file selected</p>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     {docPath && !selectedFile && (
-                      <button
+                      <Button
+                        size="sm"
+                        variant="secondary"
                         onClick={() => setIsViewerOpen(true)}
-                        className="px-3 py-1.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm font-medium transition-all duration-200"
                       >
                         View
-                      </button>
+                      </Button>
                     )}
                     {isEditing && selectedFile && (
                       <>
-                        <button
-                          onClick={handleUpload}
-                          disabled={uploading}
-                          className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-400 text-sm font-medium transition-all duration-200 disabled:opacity-50"
-                        >
-                          {uploading ? 'Uploading...' : 'Upload'}
-                        </button>
+                        <Button size="sm" onClick={handleUpload} disabled={uploading}>
+                          {uploading ? 'Uploading…' : 'Upload'}
+                        </Button>
                         <button
                           onClick={() => {
                             setSelectedFile(null);
                             setFileName(null);
                             if (fileInputRef.current) fileInputRef.current.value = '';
                           }}
-                          className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 transition-all duration-200"
+                          aria-label="Remove file"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-red-600 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
+                          <X size={14} />
                         </button>
                       </>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-4">
-                  <svg className="w-12 h-12 mx-auto text-white/20 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                  <p className="text-white/40 text-sm mb-3">No CV uploaded</p>
+                <div className="py-4 text-center">
+                  <p className="mb-3 text-sm text-slate-500">No CV uploaded</p>
                   {isEditing && (
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 text-white text-sm font-medium shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30 transition-all duration-300"
-                    >
+                    <Button size="sm" onClick={() => fileInputRef.current?.click()}>
                       Upload CV
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
@@ -449,15 +412,10 @@ export function RecordModal({ isOpen, onClose, record, onUpdate }: RecordModalPr
             </div>
           </div>
 
-          <div className="sticky bottom-0 p-6 border-t border-white/10 bg-gradient-to-r from-slate-900/80 to-slate-800/80 backdrop-blur-xl rounded-b-3xl">
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={onClose}
-                className="px-6 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium transition-all duration-300"
-              >
-                Close
-              </button>
-            </div>
+          <div className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-3.5">
+            <Button variant="secondary" size="sm" onClick={onClose}>
+              Close
+            </Button>
           </div>
         </div>
       </div>
