@@ -76,7 +76,7 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
   const [totalRecords, setTotalRecords] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
   const [departments, setDepartments] = useState<string[]>([]);
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [listWidth, setListWidth] = useState<number>(() => {
     const saved = Number(window.localStorage.getItem(LIST_WIDTH_KEY));
     return saved >= LIST_MIN_WIDTH && saved <= LIST_MAX_WIDTH ? saved : LIST_DEFAULT_WIDTH;
@@ -116,20 +116,6 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const tag = target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
-      if (e.key === '/') {
-        e.preventDefault();
-        document.getElementById('filter-name')?.focus();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const startResize = (e: React.MouseEvent) => {
@@ -200,11 +186,11 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
     fetchRecords(1, { resetSelection: true });
   };
 
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     setFilters(EMPTY_FILTERS);
     setSelectedRecord(null);
     fetchRecords(1, { resetSelection: true });
-  };
+  }, [fetchRecords]);
 
   const handleFilterChange = (field: string, value: string) => {
     setFilters(prev => ({ ...prev, [field]: value }));
@@ -214,12 +200,64 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
     setSelectedRecord(record);
   };
 
-  const handleCardDoubleClick = (record: CandidateRecord) => {
+  const handleCardDoubleClick = useCallback((record: CandidateRecord) => {
     setSelectedRecord(record);
     if (onRecordDoubleClick) {
       onRecordDoubleClick(record);
     }
-  };
+  }, [onRecordDoubleClick]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
+
+      if (e.key === '/') {
+        e.preventDefault();
+        setShowFilters(true);
+        window.setTimeout(() => document.getElementById('filter-name')?.focus(), 0);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        handleClearFilters();
+        return;
+      }
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (records.length === 0) return;
+        e.preventDefault();
+        const currentIndex = records.findIndex((r) => r.slNo === selectedRecord?.slNo);
+        const targetIndex =
+          currentIndex === -1
+            ? e.key === 'ArrowDown'
+              ? 0
+              : records.length - 1
+            : e.key === 'ArrowDown'
+              ? Math.min(records.length - 1, currentIndex + 1)
+              : Math.max(0, currentIndex - 1);
+        const record = records[targetIndex];
+        if (record) {
+          setSelectedRecord(record);
+          listScrollRef.current
+            ?.querySelector(`[data-slno="${record.slNo}"]`)
+            ?.scrollIntoView({ block: 'nearest' });
+        }
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        if (tag === 'BUTTON' || tag === 'A') return;
+        if (selectedRecord) {
+          e.preventDefault();
+          handleCardDoubleClick(selectedRecord);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [records, selectedRecord, onRecordDoubleClick, handleClearFilters, handleCardDoubleClick]);
 
   const handlePrevPage = () => {
     if (page > 1) {
@@ -234,6 +272,10 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
   };
 
   const selectedDocUrl = selectedRecord?.docPath ? API_URL.docPath(selectedRecord.docPath) : null;
+  const previewSrc =
+    selectedDocUrl && selectedRecord?.docPath?.toLowerCase().endsWith('.pdf')
+      ? `${selectedDocUrl}#page=1&view=Fit`
+      : selectedDocUrl;
 
   const activeFilterCount = Object.values(filters).filter((value) => value.trim() !== '').length;
 
@@ -248,7 +290,7 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
   if (salaryLabel) previewMeta.push({ label: 'Salary', value: salaryLabel });
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <PageHeader
         title="Candidate Search"
         subtitle="Find candidates by name, phone, department, or status"
@@ -270,12 +312,15 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
         <button
           onClick={() => setShowFilters(!showFilters)}
           aria-expanded={showFilters}
+          aria-controls="search-filters-panel"
           className="flex w-full items-center gap-2 px-4 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
         >
           <CaretDown
             size={13}
             weight="bold"
-            className={`text-slate-400 transition-transform duration-150 ${showFilters ? '' : '-rotate-90'}`}
+            className={`text-slate-400 transition-transform duration-[240ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
+              showFilters ? '' : '-rotate-90'
+            }`}
           />
           <span className="text-[13px] font-medium text-slate-700">Filters</span>
           {activeFilterCount > 0 && (
@@ -287,16 +332,28 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
             <span className="text-[13px] text-slate-400">Expand to refine your search</span>
           )}
         </button>
-        {showFilters && (
-          <div
-            className="grid grid-cols-2 gap-3 border-t border-slate-100 px-4 pb-4 pt-3 md:grid-cols-3 xl:grid-cols-4"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
-                e.preventDefault();
-                handleSearch();
-              }
-            }}
-          >
+        <div
+          id="search-filters-panel"
+          inert={!showFilters}
+          className={`grid transition-[grid-template-rows] duration-[240ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
+            showFilters ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          }`}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div
+              className={`transition-[opacity,transform] duration-[240ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
+                showFilters ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'
+              }`}
+            >
+              <div
+                className="grid grid-cols-2 gap-3 border-t border-slate-100 px-4 pb-4 pt-3 md:grid-cols-3 xl:grid-cols-4"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
+                    e.preventDefault();
+                    handleSearch();
+                  }
+                }}
+              >
             <Field label="Name" htmlFor="filter-name">
               <Input
                 id="filter-name"
@@ -371,14 +428,16 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
                 onChange={(e) => handleFilterChange('status', e.target.value)}
               />
             </Field>
+            </div>
+            </div>
           </div>
-        )}
+        </div>
       </Panel>
 
       {/* RESULTS + PREVIEW */}
       <div
         ref={gridRef}
-        className="relative grid min-h-0 flex-1 grid-cols-1 gap-4"
+        className="relative grid min-h-0 flex-1 grid-cols-1 gap-3"
         style={isXl ? { gridTemplateColumns: `${listWidth}px minmax(0, 1fr)` } : undefined}
       >
         {isXl && (
@@ -436,12 +495,13 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
                   return (
                     <div
                       key={record.slNo}
+                      data-slno={record.slNo}
                       onClick={() => handleCardClick(record)}
                       onDoubleClick={() => handleCardDoubleClick(record)}
                       title="Double-click to edit"
                       className={`relative cursor-pointer rounded-lg border px-3.5 py-3 transition-colors duration-150 ${
                         selected
-                          ? 'border-blue-500 bg-blue-50/70'
+                          ? 'border-blue-500 bg-blue-50'
                           : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
@@ -518,28 +578,26 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
 
         {/* PREVIEW */}
         <Panel className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3.5">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="truncate text-sm font-semibold text-slate-900">
-                  {selectedRecord?.name || 'Resume Preview'}
-                </h3>
-                {selectedRecord?.status && <StatusBadge status={selectedRecord.status} />}
-              </div>
-              {selectedRecord && previewMeta.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-                  {previewMeta.map((item, index) => (
-                    <span key={item.label} className="flex items-center gap-x-2">
-                      {index > 0 && <span className="h-3 w-px bg-slate-200" />}
-                      <span className="text-slate-400">{item.label}</span>
-                      <span className={`font-medium text-slate-700 ${item.mono ? 'font-mono text-xs' : ''}`}>
-                        {item.value}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              )}
+          <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <h3 className="truncate text-sm font-semibold text-slate-900">
+                {selectedRecord?.name || 'Resume Preview'}
+              </h3>
+              {selectedRecord?.status && <StatusBadge status={selectedRecord.status} />}
             </div>
+            {selectedRecord && previewMeta.length > 0 && (
+              <div className="flex min-w-0 flex-1 items-center gap-x-2.5 overflow-x-auto whitespace-nowrap text-xs text-slate-500">
+                {previewMeta.map((item, index) => (
+                  <span key={item.label} className="flex shrink-0 items-center gap-x-2">
+                    {index > 0 && <span className="h-3 w-px bg-slate-200" />}
+                    <span className="text-slate-400">{item.label}</span>
+                    <span className={`font-medium text-slate-700 ${item.mono ? 'font-mono text-xs' : ''}`}>
+                      {item.value}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex shrink-0 items-center gap-2">
               {selectedDocUrl && (
                 <a href={selectedDocUrl} target="_blank" rel="noopener noreferrer">
@@ -561,11 +619,11 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overscroll-contain bg-slate-100 p-4">
+          <div className="min-h-0 flex-1 overscroll-contain bg-slate-100 p-3">
             {selectedRecord?.docPath ? (
               <iframe
                 key={selectedRecord.docPath}
-                src={API_URL.docPath(selectedRecord.docPath)}
+                src={previewSrc ?? undefined}
                 className="preview-fade h-full w-full rounded-lg border border-slate-200 bg-white shadow-panel"
                 title="Resume Preview"
               />

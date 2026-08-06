@@ -19,6 +19,7 @@ export function DocumentViewer({ isOpen, onClose, docPath, fileName }: DocumentV
 
   const fullUrl = API_URL.docPath(docPath);
   const isPdf = docPath.toLowerCase().endsWith('.pdf');
+  const previewSrc = isPdf ? `${fullUrl}#page=1&view=Fit` : fullUrl;
 
   return (
       <div
@@ -63,7 +64,7 @@ export function DocumentViewer({ isOpen, onClose, docPath, fileName }: DocumentV
         <div className="min-h-0 flex-1 bg-slate-100 p-4">
           {isPdf ? (
             <iframe
-              src={fullUrl}
+              src={previewSrc}
               className="h-full w-full rounded-lg border border-slate-200 bg-white shadow-sm"
               title="Document Viewer"
             />
