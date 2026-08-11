@@ -19,7 +19,7 @@ interface RecordsListProps {
 
 const statusColors: Record<string, string> = {
   notice_period: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-  interview_scheduled: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  interview_scheduled: 'bg-gray-500/20 text-gray-300 border-gray-500/30',
   offer_extended: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
   joined: 'bg-green-500/20 text-green-300 border-green-500/30',
   rejected: 'bg-red-500/20 text-red-300 border-red-500/30',
@@ -53,7 +53,7 @@ export function RecordsList({ records, onRecordClick }: RecordsListProps) {
                 Filter
               </span>
             </button>
-            <button className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 text-white text-sm font-medium shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30 transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]">
+            <button className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-sm font-medium transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]">
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -127,7 +127,7 @@ export function RecordsList({ records, onRecordClick }: RecordsListProps) {
                     <td colSpan={8} className="px-4 py-16 text-center">
                       <div className="flex flex-col items-center">
                         <div className="relative mb-4">
-                          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-full blur-xl" />
+                          <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-white/[0.03] rounded-full blur-xl" />
                           <svg className="relative w-16 h-16 mx-auto text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>

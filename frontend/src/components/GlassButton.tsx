@@ -13,11 +13,11 @@ export function GlassButton({ children, variant = 'primary', className = '', ...
 
   const variants = {
     primary: `
-      bg-gradient-to-r from-blue-500 to-cyan-400
+      bg-gradient-to-r from-white/20 to-white/10
+      border border-white/20
       text-white
-      shadow-[0_4px_20px_rgba(59,130,246,0.4)]
-      hover:shadow-[0_4px_30px_rgba(6,182,212,0.5)]
-      hover:from-blue-400 hover:to-cyan-300
+      shadow-lg shadow-black/20
+      hover:from-white/25 hover:to-white/15
     `,
     secondary: `
       bg-white/10 backdrop-blur-md

@@ -18,7 +18,7 @@ export function Select({ className = '', error, children, ...props }: SelectProp
       <CaretDown
         size={14}
         weight="bold"
-        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500"
       />
     </div>
   );

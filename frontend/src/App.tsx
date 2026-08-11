@@ -65,9 +65,9 @@ function FormSection({
   gridClass?: string;
 }) {
   return (
-    <section className="mt-6 border-t border-slate-100 pt-5 first:mt-0 first:border-t-0 first:pt-0">
-      <h2 className="text-[13px] font-semibold text-slate-900">{title}</h2>
-      {hint && <p className="mt-0.5 text-xs text-slate-400">{hint}</p>}
+    <section className="mt-6 border-t border-slate-100 pt-5 first:mt-0 first:border-t-0 first:pt-0 dark:border-slate-800">
+      <h2 className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+      {hint && <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{hint}</p>}
       <div className={`${gridClass} mt-3`}>{children}</div>
     </section>
   );
@@ -76,6 +76,18 @@ function FormSection({
 const fileNameFromPath = (path: string) => path.split('/').pop() || path;
 
 function App() {
+  const [dark, setDark] = useState(() => {
+    const stored = window.localStorage.getItem('globe1-theme');
+    if (stored === 'dark') return true;
+    if (stored === 'light') return false;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark);
+    window.localStorage.setItem('globe1-theme', dark ? 'dark' : 'light');
+  }, [dark]);
+
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [, setFileType] = useState<string | null>(null);
@@ -603,7 +615,7 @@ function App() {
   const serverDocUrl = uploadedFilePath ? API_URL.docPath(uploadedFilePath) : null;
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
+    <div className="flex h-dvh flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
       <TopNav
         tabs={[
           { id: 'entry', label: 'Entry' },
@@ -611,6 +623,8 @@ function App() {
         ]}
         activeTab={activeTab}
         onTabChange={(id) => handleTabChange(id as TabType)}
+        dark={dark}
+        onToggleDark={() => setDark((prev) => !prev)}
       />
 
       <main className="flex min-h-0 flex-1 flex-col gap-4 px-6 pb-5 pt-5">
@@ -619,8 +633,8 @@ function App() {
             <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,440px)_minmax(0,1fr)]">
               {/* FORM PANEL */}
               <Panel className="flex min-h-0 flex-col overflow-hidden">
-                <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-5 py-3">
-                  <h2 className="min-w-0 truncate text-sm font-semibold text-slate-900">
+                <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-5 py-3 dark:border-slate-800">
+                  <h2 className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                     Candidate Details
                   </h2>
                   <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -848,7 +862,7 @@ function App() {
                     hint="Upload a resume — AI Extract auto-fills the form"
                     gridClass="grid grid-cols-1 gap-4"
                   >
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
                       <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="file"
@@ -859,9 +873,9 @@ function App() {
                         />
                         <label
                           htmlFor="file-upload"
-                          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:focus-visible:ring-slate-400/60"
                         >
-                          <Sparkle size={14} weight="bold" className="text-blue-600" />
+                          <Sparkle size={14} weight="bold" className="text-blue-600 dark:text-slate-200" />
                           AI Extract
                         </label>
                         <input
@@ -873,25 +887,25 @@ function App() {
                         />
                         <label
                           htmlFor="manual-upload"
-                          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-visible:ring-slate-400/60"
                         >
                           <UploadSimple size={14} weight="bold" />
                           Browse CV
                         </label>
                         {loading && (
-                          <span className="flex items-center gap-1.5 text-[13px] text-slate-500">
-                            <CircleNotch size={14} className="animate-spin text-blue-600" />
+                          <span className="flex items-center gap-1.5 text-[13px] text-slate-500 dark:text-slate-400">
+                            <CircleNotch size={14} className="animate-spin text-blue-600 dark:text-slate-300" />
                             Extracting details…
                           </span>
                         )}
                       </div>
                       {attachedFileName && (
-                        <div className="mt-3 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
+                        <div className="mt-3 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-500/30 dark:bg-emerald-500/10">
                           <FilePdf size={15} className="shrink-0 text-emerald-600" />
-                          <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-700">
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-700 dark:text-slate-200">
                             {attachedFileName}
                           </span>
-                          <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-700">
+                          <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
                             <Check size={12} weight="bold" />
                             Saved
                           </span>
@@ -904,13 +918,13 @@ function App() {
 
               {/* PREVIEW PANEL */}
               <Panel className="flex min-h-0 flex-col overflow-hidden">
-                <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-slate-800 dark:text-slate-200">
                     <FileText size={16} />
                   </div>
                   <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-slate-900">Resume Preview</h2>
-                    <p className="truncate text-[13px] text-slate-500">
+                    <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Resume Preview</h2>
+                    <p className="truncate text-[13px] text-slate-500 dark:text-slate-400">
                       {attachedFileName ?? 'No document attached'}
                     </p>
                   </div>
@@ -927,22 +941,22 @@ function App() {
                     </a>
                   )}
                 </div>
-                <div className="min-h-0 flex-1 bg-slate-100 p-4">
+                <div className="min-h-0 flex-1 bg-slate-100 p-4 dark:bg-slate-950">
                   {previewUrl ? (
                     <iframe
                       key={previewUrl}
                       src={previewUrl}
                       title="Resume preview"
-                      className="preview-fade h-full w-full rounded-lg border border-slate-200 bg-white shadow-panel"
+                      className="preview-fade h-full w-full rounded-lg border border-slate-200 bg-white shadow-panel dark:border-slate-800"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white">
+                    <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
                       <div className="text-center">
-                        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
+                        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-500">
                           <FileText size={22} />
                         </div>
-                        <p className="text-sm font-semibold text-slate-700">No document uploaded</p>
-                        <p className="mt-1 text-[13px] text-slate-500">
+                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">No document uploaded</p>
+                        <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
                           Upload a PDF or DOC to preview it here.
                         </p>
                       </div>
@@ -973,12 +987,12 @@ function App() {
 
       {loading && (
         <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-popover">
+          <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-popover dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center gap-3">
-              <CircleNotch size={20} className="shrink-0 animate-spin text-blue-600" />
+              <CircleNotch size={20} className="shrink-0 animate-spin text-blue-600 dark:text-slate-300" />
               <div>
-                <p className="text-sm font-semibold text-slate-900">Analyzing resume…</p>
-                <p className="text-[13px] text-slate-500">Extracting candidate details</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Analyzing resume…</p>
+                <p className="text-[13px] text-slate-500 dark:text-slate-400">Extracting candidate details</p>
               </div>
             </div>
           </div>

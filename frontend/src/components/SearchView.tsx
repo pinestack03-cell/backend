@@ -313,23 +313,23 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
           onClick={() => setShowFilters(!showFilters)}
           aria-expanded={showFilters}
           aria-controls="search-filters-panel"
-          className="flex w-full items-center gap-2 px-4 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+          className="flex w-full items-center gap-2 px-4 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:focus-visible:ring-slate-400/60"
         >
           <CaretDown
             size={13}
             weight="bold"
-            className={`text-slate-400 transition-transform duration-[240ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
+            className={`text-slate-400 transition-transform duration-[240ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none dark:text-slate-500 ${
               showFilters ? '' : '-rotate-90'
             }`}
           />
-          <span className="text-[13px] font-medium text-slate-700">Filters</span>
+          <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Filters</span>
           {activeFilterCount > 0 && (
-            <span className="rounded-full border border-blue-200 bg-blue-50 px-1.5 py-px text-xs font-medium text-blue-700">
+            <span className="rounded-full border border-blue-200 bg-blue-50 px-1.5 py-px text-xs font-medium text-blue-700 dark:border-slate-500/40 dark:bg-slate-500/20 dark:text-slate-300">
               {activeFilterCount} active
             </span>
           )}
           {!showFilters && (
-            <span className="text-[13px] text-slate-400">Expand to refine your search</span>
+            <span className="text-[13px] text-slate-400 dark:text-slate-500">Expand to refine your search</span>
           )}
         </button>
         <div
@@ -346,7 +346,7 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
               }`}
             >
               <div
-                className="grid grid-cols-2 gap-3 border-t border-slate-100 px-4 pb-4 pt-3 md:grid-cols-3 xl:grid-cols-4"
+                className="grid grid-cols-2 gap-3 border-t border-slate-100 px-4 pb-4 pt-3 md:grid-cols-3 xl:grid-cols-4 dark:border-slate-800"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
                     e.preventDefault();
@@ -448,15 +448,15 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
             title="Drag to resize · double-click to reset"
             onMouseDown={startResize}
             onDoubleClick={resetListWidth}
-            className="absolute inset-y-0 z-10 w-1.5 -translate-x-1/2 cursor-col-resize rounded-full transition-colors duration-150 hover:bg-blue-500/50"
+            className="absolute inset-y-0 z-10 w-1.5 -translate-x-1/2 cursor-col-resize rounded-full transition-colors duration-150 hover:bg-blue-500/50 dark:hover:bg-slate-400/50"
             style={{ left: `calc(${listWidth}px + 8px)` }}
           />
         )}
         {/* LIST */}
         <Panel className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
-            <h2 className="text-sm font-semibold text-slate-900">Candidates</h2>
-            <span className="text-xs text-slate-500">{totalRecords} results</span>
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Candidates</h2>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{totalRecords} results</span>
           </div>
 
           <div
@@ -466,7 +466,7 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
             {loading ? (
               <div className="space-y-2.5">
                 {[0, 1, 2, 3, 4].map((i) => (
-                  <div key={i} className="rounded-lg border border-slate-200 p-3.5">
+                  <div key={i} className="rounded-lg border border-slate-200 p-3.5 dark:border-slate-800">
                     <div className="flex items-center justify-between">
                       <Skeleton className="h-4 w-2/5" />
                       <Skeleton className="h-5 w-20 rounded-full" />
@@ -501,42 +501,42 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
                       title="Double-click to edit"
                       className={`relative cursor-pointer rounded-lg border px-3.5 py-3 transition-colors duration-150 ${
                         selected
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                          ? 'border-blue-500 bg-blue-50 dark:border-slate-400 dark:bg-slate-800'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800'
                       }`}
                     >
                       {selected && (
-                        <span className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-full bg-blue-600" />
+                        <span className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-full bg-blue-600 dark:bg-slate-300" />
                       )}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-900">
+                          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                             {record.name || '—'}
                           </p>
-                          <p className="mt-0.5 truncate text-[13px] text-slate-500">
+                          <p className="mt-0.5 truncate text-[13px] text-slate-500 dark:text-slate-400">
                             {[record.post, record.department, record.location].filter(Boolean).join(' · ') || '—'}
                           </p>
                         </div>
                         <StatusBadge status={record.status} />
                       </div>
-                      <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5">
-                        <div className="flex min-w-0 items-center gap-2 font-mono text-xs text-slate-600">
+                      <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
+                        <div className="flex min-w-0 items-center gap-2 font-mono text-xs text-slate-600 dark:text-slate-300">
                           <span className="truncate">{record.phone1 || '—'}</span>
                           {record.phone2 && (
-                            <span className="truncate text-slate-400">{record.phone2}</span>
+                            <span className="truncate text-slate-400 dark:text-slate-500">{record.phone2}</span>
                           )}
                         </div>
-                        <div className="shrink-0 text-xs text-slate-400">
+                        <div className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
                           {formatSalary(record.currentSalary) && formatSalary(record.expectedSalary) ? (
                             <>
-                              <span className="font-medium text-slate-600">
+                              <span className="font-medium text-slate-600 dark:text-slate-300">
                                 {formatSalary(record.currentSalary)}
                               </span>
-                              <span className="mx-1 text-slate-300">→</span>
+                              <span className="mx-1 text-slate-300 dark:text-slate-600">→</span>
                               {formatSalary(record.expectedSalary)}
                             </>
                           ) : (
-                            <span className="text-slate-400">
+                            <span className="text-slate-400 dark:text-slate-500">
                               {formatSalary(record.currentSalary) || formatSalary(record.expectedSalary) || '—'}
                             </span>
                           )}
@@ -550,7 +550,7 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
           </div>
 
           {totalPages > 1 && (
-            <div className="flex shrink-0 items-center justify-between border-t border-slate-200 px-3 py-2.5">
+            <div className="flex shrink-0 items-center justify-between border-t border-slate-200 px-3 py-2.5 dark:border-slate-800">
               <Button
                 variant="secondary"
                 size="sm"
@@ -560,8 +560,8 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
               >
                 Prev
               </Button>
-              <span className="text-[13px] text-slate-500">
-                Page <span className="font-medium text-slate-700">{page}</span> of {totalPages}
+              <span className="text-[13px] text-slate-500 dark:text-slate-400">
+                Page <span className="font-medium text-slate-700 dark:text-slate-200">{page}</span> of {totalPages}
               </span>
               <Button
                 variant="secondary"
@@ -578,20 +578,20 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
 
         {/* PREVIEW */}
         <Panel className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-2.5">
+          <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-2.5 dark:border-slate-800">
             <div className="flex min-w-0 items-center gap-2.5">
-              <h3 className="truncate text-sm font-semibold text-slate-900">
+              <h3 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                 {selectedRecord?.name || 'Resume Preview'}
               </h3>
               {selectedRecord?.status && <StatusBadge status={selectedRecord.status} />}
             </div>
             {selectedRecord && previewMeta.length > 0 && (
-              <div className="flex min-w-0 flex-1 items-center gap-x-2.5 overflow-x-auto whitespace-nowrap text-xs text-slate-500">
+              <div className="flex min-w-0 flex-1 items-center gap-x-2.5 overflow-x-auto whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
                 {previewMeta.map((item, index) => (
                   <span key={item.label} className="flex shrink-0 items-center gap-x-2">
-                    {index > 0 && <span className="h-3 w-px bg-slate-200" />}
-                    <span className="text-slate-400">{item.label}</span>
-                    <span className={`font-medium text-slate-700 ${item.mono ? 'font-mono text-xs' : ''}`}>
+                    {index > 0 && <span className="h-3 w-px bg-slate-200 dark:bg-slate-700" />}
+                    <span className="text-slate-400 dark:text-slate-500">{item.label}</span>
+                    <span className={`font-medium text-slate-700 dark:text-slate-200 ${item.mono ? 'font-mono text-xs' : ''}`}>
                       {item.value}
                     </span>
                   </span>
@@ -619,16 +619,16 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overscroll-contain bg-slate-100 p-3">
+          <div className="min-h-0 flex-1 overscroll-contain bg-slate-100 p-3 dark:bg-slate-950">
             {selectedRecord?.docPath ? (
               <iframe
                 key={selectedRecord.docPath}
                 src={previewSrc ?? undefined}
-                className="preview-fade h-full w-full rounded-lg border border-slate-200 bg-white shadow-panel"
+                className="preview-fade h-full w-full rounded-lg border border-slate-200 bg-white shadow-panel dark:border-slate-800"
                 title="Resume Preview"
               />
             ) : (
-              <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white">
+              <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
                 <EmptyState
                   icon={<FileText size={22} />}
                   title={selectedRecord ? 'No resume attached' : 'No candidate selected'}

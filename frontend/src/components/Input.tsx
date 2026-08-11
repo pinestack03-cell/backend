@@ -15,16 +15,16 @@ export function Field({ label, htmlFor, required, error, hint, children, classNa
   return (
     <div className={`space-y-1.5 ${className}`}>
       {label && (
-        <label htmlFor={htmlFor} className="block text-[13px] font-medium text-slate-700">
+        <label htmlFor={htmlFor} className="block text-[13px] font-medium text-slate-700 dark:text-slate-300">
           {label}
           {required && <span className="text-red-500"> *</span>}
         </label>
       )}
       {children}
       {error ? (
-        <p className="text-xs font-medium text-red-600">{error}</p>
+        <p className="text-xs font-medium text-red-600 dark:text-red-400">{error}</p>
       ) : hint ? (
-        <p className="text-xs text-slate-400">{hint}</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">{hint}</p>
       ) : null}
     </div>
   );
@@ -50,12 +50,12 @@ export function Input({ className = '', error, leading, trailing, ref, ...props 
     <div className="relative">
       {input}
       {leading !== undefined && (
-        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-medium text-slate-400">
+        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-medium text-slate-400 dark:text-slate-500">
           {leading}
         </span>
       )}
       {trailing !== undefined && (
-        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[13px] font-medium text-slate-400">
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[13px] font-medium text-slate-400 dark:text-slate-500">
           {trailing}
         </span>
       )}

@@ -225,7 +225,7 @@ export function ResourcesList({ refreshTrigger }: ResourcesListProps) {
                     </td>
                     <td className="px-4 py-3.5 text-sm text-gray-300">{resource.post || '-'}</td>
                     <td className="px-4 py-3.5">
-                      <span className="inline-flex px-2.5 py-1 text-xs font-medium rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      <span className="inline-flex px-2.5 py-1 text-xs font-medium rounded-full bg-white/10 text-gray-300 border border-white/20">
                         {resource.department || '-'}
                       </span>
                     </td>

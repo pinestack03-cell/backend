@@ -19,8 +19,8 @@ export function PageHeader({ title, subtitle, onBack, backLabel, actions }: Page
         </Button>
       )}
       <div className="min-w-0">
-        <h1 className="truncate text-lg font-semibold tracking-tight text-slate-900">{title}</h1>
-        {subtitle && <p className="truncate text-[13px] text-slate-500">{subtitle}</p>}
+        <h1 className="truncate text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">{title}</h1>
+        {subtitle && <p className="truncate text-[13px] text-slate-500 dark:text-slate-400">{subtitle}</p>}
       </div>
       {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
