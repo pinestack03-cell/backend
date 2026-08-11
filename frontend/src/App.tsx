@@ -15,7 +15,6 @@ import {
   Field,
   Input,
   Panel,
-  PageHeader,
   SearchView,
   Textarea,
   Toaster,
@@ -617,45 +616,39 @@ function App() {
       <main className="flex min-h-0 flex-1 flex-col gap-4 px-6 pb-5 pt-5">
         {activeTab === 'entry' ? (
           <>
-            <PageHeader
-              title={isEdit ? 'Edit Entry' : 'New Entry'}
-              subtitle={
-                isEdit
-                  ? `Entry ${formData.entryNo || '—'} · ${formData.entryDate || '—'}`
-                  : 'Register a new candidate'
-              }
-              actions={
-                <>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon={<Plus size={14} weight="bold" />}
-                    onClick={handleNewRecord}
-                  >
-                    New
-                  </Button>
-                  {isEdit && (
-                    <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
-                      Cancel
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    icon={<Check size={14} weight="bold" />}
-                    onClick={handleSubmit}
-                    disabled={saveDisabled || !isFormValid()}
-                  >
-                    {isEdit ? 'Update' : 'Save'}
-                  </Button>
-                </>
-              }
-            />
-
             <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,440px)_minmax(0,1fr)]">
               {/* FORM PANEL */}
               <Panel className="flex min-h-0 flex-col overflow-hidden">
+                <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-5 py-3">
+                  <h2 className="min-w-0 truncate text-sm font-semibold text-slate-900">
+                    Candidate Details
+                  </h2>
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Plus size={14} weight="bold" />}
+                      onClick={handleNewRecord}
+                    >
+                      New
+                    </Button>
+                    {isEdit && (
+                      <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
+                        Cancel
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      icon={<Check size={14} weight="bold" />}
+                      onClick={handleSubmit}
+                      disabled={saveDisabled || !isFormValid()}
+                    >
+                      {isEdit ? 'Update' : 'Save'}
+                    </Button>
+                  </div>
+                </div>
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">
-                  <FormSection title="Candidate Details">
+                  <div className="grid grid-cols-2 gap-4">
                     <Field label="Name" htmlFor="name">
                       <Input
                         id="name"
@@ -696,7 +689,7 @@ function App() {
                         maxLength={30}
                       />
                     </Field>
-                  </FormSection>
+                  </div>
 
                   <FormSection title="Contact" hint="Phone 1 is required and checked for duplicates">
                     <Field
