@@ -524,10 +524,67 @@ app.get("/api/auth/google/callback", async (req, res) => {
     }
 
     if (!row) {
-      return redirectToFrontend(`auth=error&message=${encodeURIComponent("No candidate profile is associated with this Google account. Please contact the administrator.")}`);
+      // Automatically create a candidate profile for a new Google account
+      const candidateName = String(payload.name || "").trim().slice(0, 30);
+
+      if (usePostgres) {
+        const entryResult = await pgPool.query(`
+          SELECT COALESCE(MAX(entry_no), 0) + 1 AS next_entry_no
+          FROM resource_mt
+        `);
+
+        const nextEntryNo = entryResult.rows[0].next_entry_no;
+
+        const insertResult = await pgPool.query(`
+          INSERT INTO resource_mt
+            (entry_no, datez, name, email, add_user, add_dt, edit_user)
+          VALUES
+            ($1, NOW(), $2, $3, 'CANDIDATE', NOW(), 'CANDIDATE')
+          RETURNING sl_no, name
+        `, [
+          nextEntryNo,
+          candidateName,
+          email
+        ]);
+
+        row = insertResult.rows[0];
+
+      } else {
+        const entryRequest = new sql.Request();
+
+        const entryResult = await entryRequest.query(`
+          SELECT ISNULL(MAX(ENTRY_NO), 0) + 1 AS next_entry_no
+          FROM RESOURCE_MT
+        `);
+
+        const nextEntryNo = entryResult.recordset[0].next_entry_no;
+
+        const insertRequest = new sql.Request();
+
+        insertRequest.input("entryNo", sql.Numeric(18,0), nextEntryNo);
+        insertRequest.input("name", sql.VarChar(30), candidateName);
+        insertRequest.input("email", sql.VarChar(100), email);
+
+        const insertResult = await insertRequest.query(`
+          INSERT INTO RESOURCE_MT
+            (ENTRY_NO, DATEZ, NAME, EMAIL, ADD_USER, ADD_DT, EDIT_USER)
+          OUTPUT INSERTED.SL_NO AS sl_no, INSERTED.NAME AS name
+          VALUES
+            (@entryNo, GETDATE(), @name, @email, 'CANDIDATE', GETDATE(), 'CANDIDATE')
+        `);
+
+        row = insertResult.recordset[0];
+      }
+
+      console.log("New candidate created:", email);
     }
 
-    const token = signToken({ role: "candidate", sub: String(row.sl_no), name: row.name || "" });
+    const token = signToken({
+      role: "candidate",
+      sub: String(row.sl_no),
+      name: row.name || ""
+    });
+
     res.redirect(`${FRONTEND_URL}?token=${encodeURIComponent(token)}`);
   } catch (err) {
     console.error("❌ Google OAuth callback error:", err.message);
