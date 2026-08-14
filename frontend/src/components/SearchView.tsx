@@ -8,7 +8,8 @@ import {
   PencilSimple,
 } from '@phosphor-icons/react';
 import { Button, EmptyState, Field, Input, PageHeader, Panel, Select, Skeleton, StatusBadge } from './index';
-import { API_URL } from '../utils/api';
+import { API_URL, apiFetch } from '../utils/api';
+import { getToken } from '../utils/auth';
 
 interface CandidateRecord {
   slNo: number;
@@ -136,7 +137,7 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
 
   const fetchDepartments = async () => {
     try {
-      const response = await fetch(API_URL.departments);
+      const response = await apiFetch(API_URL.departments);
       const data = await response.json();
       setDepartments(data.map((d: { name: string }) => d.name));
     } catch (error) {
@@ -159,7 +160,7 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
       if (filters.location) params.append('location', filters.location);
       if (filters.status) params.append('status', filters.status);
 
-      const response = await fetch(`${API_URL.resourcesSearch}?${params}`);
+      const response = await apiFetch(`${API_URL.resourcesSearch}?${params}`);
       const data = await response.json();
 
       setRecords(data.records || []);
@@ -271,7 +272,7 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
     }
   };
 
-  const selectedDocUrl = selectedRecord?.docPath ? API_URL.docPath(selectedRecord.docPath) : null;
+  const selectedDocUrl = selectedRecord?.docPath ? API_URL.docUrl(selectedRecord.docPath, getToken()) : null;
   const previewSrc =
     selectedDocUrl && selectedRecord?.docPath?.toLowerCase().endsWith('.pdf')
       ? `${selectedDocUrl}#page=1&view=Fit`

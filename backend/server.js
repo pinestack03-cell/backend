@@ -7,6 +7,9 @@ const pg = require("pg");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 const pdfParse = require("pdf-parse");
 
 /* ================= TRIM FIELD HELPER ================= */
@@ -20,6 +23,7 @@ const FIELD_LIMITS = {
   assignTo: 30,
   remark: 30,
   status: 30,
+  email: 100,
 };
 
 function trimField(value, maxLength) {
@@ -61,6 +65,81 @@ function sanitizeGeminiResponse(data) {
     skills: Array.isArray(data.skills) ? data.skills.slice(0, 10) : [],
     remarks: "",
   };
+}
+
+/* ================= AUTH CONFIG ================= */
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const TOKEN_TTL = process.env.TOKEN_TTL || "12h";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+
+if (!JWT_SECRET) {
+  console.warn("⚠️ JWT_SECRET is not set. Token issuance will be rejected. Set JWT_SECRET in the environment.");
+}
+if (!ADMIN_PASSWORD) {
+  console.warn("⚠️ ADMIN_PASSWORD is not set. Admin login is disabled. Set ADMIN_PASSWORD in the environment.");
+}
+
+function signToken(payload) {
+  if (!JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_TTL });
+}
+
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a ?? ""));
+  const bb = Buffer.from(String(b ?? ""));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+function requireAuth(roles, options = {}) {
+  return (req, res, next) => {
+    let token = null;
+    const header = req.headers.authorization || "";
+    if (header.startsWith("Bearer ")) {
+      token = header.slice(7);
+    } else if (options.allowQueryToken && req.query.token) {
+      token = String(req.query.token);
+    }
+    if (!token) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (roles.length > 0 && !roles.includes(decoded.role)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      req.user = decoded;
+      next();
+    } catch (err) {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+  };
+}
+
+/* ================= GOOGLE OAUTH CONFIG (candidate login) ================= */
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5174";
+
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+  console.warn("⚠️ Google OAuth is not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI). Candidate Google login will be disabled.");
+}
+
+const googleOAuthClient = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+
+const oauthStates = new Map();
+
+function clearExpiredOauthStates() {
+  const now = Date.now();
+  for (const [key, exp] of oauthStates.entries()) {
+    if (exp < now) oauthStates.delete(key);
+  }
 }
 
 const app = express();
@@ -112,7 +191,44 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-app.use("/uploads", express.static(uploadsDir));
+/* ================= PROTECTED CV/DOCUMENT SERVING ================= */
+
+async function getDocPathForCandidate(slNo) {
+  try {
+    if (usePostgres) {
+      const result = await pgPool.query(`SELECT doc_path FROM resource_mt WHERE sl_no = $1`, [slNo]);
+      return result.rows[0]?.doc_path || null;
+    }
+    const request = new sql.Request();
+    request.input("slNo", sql.Int, slNo);
+    const result = await request.query(`SELECT DOC_PATH FROM RESOURCE_MT WHERE SL_NO = @slNo`);
+    return result.recordset[0]?.DOC_PATH || null;
+  } catch (err) {
+    console.error("❌ Doc path lookup error:", err.message);
+    return null;
+  }
+}
+
+app.get("/uploads/:filename", requireAuth(["admin", "candidate"], { allowQueryToken: true }), async (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename);
+    const filePath = path.join(uploadsDir, filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" });
+    }
+    if (req.user.role === "candidate") {
+      const docPath = await getDocPathForCandidate(parseInt(req.user.sub));
+      const owned = docPath && path.basename(docPath) === filename;
+      if (!owned) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error("❌ File serve error:", error);
+    res.status(500).json({ error: "Failed to serve file" });
+  }
+});
 
 /* ================= GEMINI SETUP ================= */
 
@@ -184,12 +300,55 @@ async function initPostgresTable() {
         add_dt TIMESTAMP DEFAULT NOW(),
         edit_user CHAR(40),
         edit_dt TIMESTAMP,
-        doc_path VARCHAR(500)
+        doc_path VARCHAR(500),
+        email VARCHAR(100)
       )
     `);
     console.log("✅ PostgreSQL table 'resource_mt' ready");
   } catch (err) {
     console.error("❌ Table init error:", err.message);
+  }
+}
+
+/* ================= SCHEMA MIGRATION (idempotent) ================= */
+
+async function ensureSchema() {
+  try {
+    if (usePostgres) {
+      await pgPool.query(`
+        ALTER TABLE resource_mt ADD COLUMN IF NOT EXISTS email VARCHAR(100)
+      `);
+      await pgPool.query(`
+        ALTER TABLE resource_mt DROP COLUMN IF EXISTS candidate_pin_hash
+      `);
+      console.log("✅ Schema ready: email column (PostgreSQL)");
+    } else {
+      const emailCheck = await new sql.Request().query(`
+        SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'RESOURCE_MT' AND COLUMN_NAME = 'email'
+      `);
+      if (parseInt(emailCheck.recordset[0].cnt) === 0) {
+        await new sql.Request().query(`
+          ALTER TABLE RESOURCE_MT ADD email VARCHAR(100) NULL
+        `);
+        console.log("✅ Schema migrated: email column added (SQL Server)");
+      } else {
+        console.log("✅ Schema ready: email column (SQL Server)");
+      }
+
+      const pinCheck = await new sql.Request().query(`
+        SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'RESOURCE_MT' AND COLUMN_NAME = 'candidate_pin_hash'
+      `);
+      if (parseInt(pinCheck.recordset[0].cnt) > 0) {
+        await new sql.Request().query(`
+          ALTER TABLE RESOURCE_MT DROP COLUMN candidate_pin_hash
+        `);
+        console.log("✅ Schema cleanup: dropped candidate_pin_hash (SQL Server)");
+      }
+    }
+  } catch (err) {
+    console.error("❌ Schema ensure error:", err.message);
   }
 }
 
@@ -202,6 +361,7 @@ if (usePostgres) {
     .then(() => {
       console.log("✅ PostgreSQL Connected");
       initPostgresTable();
+      ensureSchema();
     })
     .catch(err => {
       console.error("❌ PostgreSQL Connection Error:", err.message);
@@ -210,6 +370,7 @@ if (usePostgres) {
   sql.connect(dbConfig)
     .then(() => {
       console.log("✅ SQL Server Connected to", dbConfig.database);
+      ensureSchema();
     })
     .catch(err => {
       console.error("❌ SQL Connection Error:", err.message);
@@ -248,31 +409,365 @@ app.get("/api", (req, res) => {
     endpoints: {
       GET: [
         "/api - API info",
-        "/api/resources - Get all resources",
-        "/api/resources/latest - Get latest resource",
-        "/api/resources/next-entry - Get next entry number",
-        "/api/resources/:id - Get resource by ID",
-        "/api/resources/search - Search resources with filters",
-        "/api/check-phone - Check phone duplicate",
-        "/api/departments - Get all departments",
-        "/api/test - Database test"
+        "/api/auth/google - Start Google OAuth login (candidate)",
+        "/api/auth/google/callback - Google OAuth callback (candidate)",
+        "/api/candidate/me - Get own record (candidate)",
+        "/api/resources - Get all resources (admin)",
+        "/api/resources/latest - Get latest resource (admin)",
+        "/api/resources/next-entry - Get next entry number (admin)",
+        "/api/resources/:id - Get resource by ID (admin)",
+        "/api/resources/search - Search resources with filters (admin)",
+        "/api/check-phone - Check phone duplicate (admin)",
+        "/api/departments - Get all departments (admin)",
+        "/api/test - Database test (admin)",
+        "/uploads/:filename - Protected CV/document access (admin or owner)"
       ],
       POST: [
-        "/api/resources - Create new resource",
-        "/api/resources/upload - Upload file",
-        "/parse-cv - Parse CV PDF",
-        "/insert-candidate - Insert candidate"
+        "/api/auth/admin/login - Admin login",
+        "/api/resources - Create new resource (admin)",
+        "/api/resources/upload - Upload file (admin)",
+        "/api/candidate/cv - Upload own CV (candidate)",
+        "/parse-cv - Parse CV PDF (admin)",
+        "/insert-candidate - Insert candidate (admin)"
       ],
       PUT: [
-        "/api/resources/:id - Update resource"
+        "/api/resources/:id - Update resource (admin)",
+        "/api/candidate/me - Update own profile (candidate)"
       ]
     }
   });
 });
 
+/* ================= API: AUTH - ADMIN LOGIN ================= */
+
+app.post("/api/auth/admin/login", (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!ADMIN_PASSWORD || !safeEqual(username, ADMIN_USERNAME) || !safeEqual(password, ADMIN_PASSWORD)) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    const token = signToken({ role: "admin", sub: "admin", name: ADMIN_USERNAME });
+    res.json({ success: true, token, role: "admin", name: ADMIN_USERNAME });
+  } catch (error) {
+    console.error("❌ Admin login error:", error);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+/* ================= API: AUTH - GOOGLE OAUTH (candidate login) ================= */
+
+app.get("/api/auth/google", (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+    return res.status(503).json({ error: "Google login is not configured" });
+  }
+  clearExpiredOauthStates();
+  const state = crypto.randomBytes(24).toString("hex");
+  oauthStates.set(state, Date.now() + 10 * 60 * 1000);
+  const authUrl = googleOAuthClient.generateAuthUrl({
+    access_type: "online",
+    prompt: "select_account",
+    scope: ["openid", "email", "profile"],
+    state,
+  });
+  res.redirect(authUrl);
+});
+
+app.get("/api/auth/google/callback", async (req, res) => {
+  const redirectToFrontend = (params) => res.redirect(`${FRONTEND_URL}?${params}`);
+
+  const { code, state, error } = req.query;
+
+  if (error) {
+    return redirectToFrontend(`auth=error&message=${encodeURIComponent("Google sign-in was cancelled or failed.")}`);
+  }
+  if (!code || !state) {
+    return redirectToFrontend(`auth=error&message=${encodeURIComponent("Google sign-in failed. Please try again.")}`);
+  }
+
+  const stateExp = oauthStates.get(state);
+  oauthStates.delete(state);
+  if (!stateExp || stateExp < Date.now()) {
+    return redirectToFrontend(`auth=error&message=${encodeURIComponent("Google sign-in session expired. Please try again.")}`);
+  }
+
+  try {
+    const { tokens } = await googleOAuthClient.getToken(code);
+    googleOAuthClient.setCredentials(tokens);
+
+    const ticket = await googleOAuthClient.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+
+    const email = String(payload.email || "").trim().toLowerCase();
+    const emailVerified = payload.email_verified === true;
+    if (!email || !emailVerified) {
+      return redirectToFrontend(`auth=error&message=${encodeURIComponent("Google account email could not be verified.")}`);
+    }
+
+    let row = null;
+    if (usePostgres) {
+      const result = await pgPool.query(`
+        SELECT sl_no, name FROM resource_mt
+        WHERE LOWER(email) = $1
+      `, [email]);
+      row = result.rows[0] || null;
+    } else {
+      const request = new sql.Request();
+      request.input("email", sql.VarChar(100), email);
+      const result = await request.query(`
+        SELECT TOP 1 SL_NO, NAME FROM RESOURCE_MT
+        WHERE LOWER(email) = LOWER(@email)
+      `);
+      row = result.recordset[0] || null;
+    }
+
+    if (!row) {
+      return redirectToFrontend(`auth=error&message=${encodeURIComponent("No candidate profile is associated with this Google account. Please contact the administrator.")}`);
+    }
+
+    const token = signToken({ role: "candidate", sub: String(row.sl_no), name: row.name || "" });
+    res.redirect(`${FRONTEND_URL}?token=${encodeURIComponent(token)}`);
+  } catch (err) {
+    console.error("❌ Google OAuth callback error:", err.message);
+    redirectToFrontend(`auth=error&message=${encodeURIComponent("Google sign-in failed. Please try again.")}`);
+  }
+});
+
+/* ================= API: CANDIDATE - GET OWN RECORD ================= */
+
+app.get("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
+  try {
+    const slNo = parseInt(req.user.sub);
+
+    if (usePostgres) {
+      const result = await pgPool.query(`
+        SELECT
+          sl_no as "slNo",
+          entry_no as "entryNo",
+          to_char(datez, 'YYYY-MM-DD') as datez,
+          phone1,
+          phone2,
+          name,
+          post,
+          department,
+          location,
+          doc_path as "docPath",
+          experience,
+          cur_salary as "currentSalary",
+          exp_salary as "expectedSalary",
+          cur_status as status,
+          email
+        FROM resource_mt
+        WHERE sl_no = $1
+      `, [slNo]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Record not found" });
+      }
+      return res.json(result.rows[0]);
+    }
+
+    const request = new sql.Request();
+    request.input("slNo", sql.Int, slNo);
+    const result = await request.query(`
+      SELECT
+        SL_NO as slNo,
+        ENTRY_NO as entryNo,
+        CONVERT(varchar, DATEZ, 23) as datez,
+        PHONE1 as phone1,
+        PHONE2 as phone2,
+        NAME as name,
+        POST as post,
+        DEPARTMENT as department,
+        LOCATION as location,
+        DOC_PATH as docPath,
+        EXPERIENCE as experience,
+        CUR_SALARY as currentSalary,
+        EXP_SALARY as expectedSalary,
+        CUR_STATUS as status,
+        EMAIL as email
+      FROM RESOURCE_MT
+      WHERE SL_NO = @slNo
+    `);
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ error: "Record not found" });
+    }
+    res.json(result.recordset[0]);
+  } catch (error) {
+    console.error("❌ Candidate me error:", error.message);
+    res.status(500).json({ error: "Failed to fetch record" });
+  }
+});
+
+/* ================= API: CANDIDATE - UPDATE OWN RECORD (whitelisted fields only) ================= */
+
+app.put("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
+  try {
+    const slNo = parseInt(req.user.sub);
+    const raw = req.body || {};
+
+    const allowed = {};
+    const pick = (key, max) => {
+      if (raw[key] !== undefined) allowed[key] = trimField(raw[key], max);
+    };
+    pick("name", 30);
+    pick("phone1", 10);
+    pick("phone2", 10);
+    pick("post", 50);
+    pick("department", 30);
+    pick("location", 30);
+
+    const experience = Number(raw.experience);
+    const currentSalary = Number(raw.currentSalary);
+    const expectedSalary = Number(raw.expectedSalary);
+    allowed.experience = Number.isFinite(experience) ? experience : 0;
+    allowed.currentSalary = Number.isFinite(currentSalary) ? currentSalary : 0;
+    allowed.expectedSalary = Number.isFinite(expectedSalary) ? expectedSalary : 0;
+
+    const phone1 = (allowed.phone1 || "").replace(/\D/g, "");
+    const phone2 = (allowed.phone2 || "").replace(/\D/g, "");
+    allowed.phone1 = phone1;
+    allowed.phone2 = phone2;
+
+    if (!phone1 || phone1.length !== 10) {
+      return res.status(400).json({ success: false, error: "Phone 1 must be exactly 10 digits" });
+    }
+    if (phone2 && phone2.length !== 10) {
+      return res.status(400).json({ success: false, error: "Phone 2 must be exactly 10 digits" });
+    }
+
+    if (usePostgres) {
+      const dup = await pgPool.query(`
+        SELECT name FROM resource_mt
+        WHERE (phone1 = $1 OR phone2 = $1) AND sl_no != $2
+      `, [phone1, slNo]);
+      if (dup.rows.length > 0) {
+        return res.status(400).json({ success: false, error: `Phone already exists (Name: ${dup.rows[0].name})` });
+      }
+      if (phone2 && phone2 !== phone1) {
+        const dup2 = await pgPool.query(`
+          SELECT name FROM resource_mt
+          WHERE (phone1 = $1 OR phone2 = $1) AND sl_no != $2
+        `, [phone2, slNo]);
+        if (dup2.rows.length > 0) {
+          return res.status(400).json({ success: false, error: `Phone 2 already exists (Name: ${dup2.rows[0].name})` });
+        }
+      }
+
+      await pgPool.query(`
+        UPDATE resource_mt SET
+          name = $1,
+          phone1 = $2,
+          phone2 = $3,
+          post = $4,
+          department = $5,
+          location = $6,
+          experience = $7,
+          cur_salary = $8,
+          exp_salary = $9
+        WHERE sl_no = $10
+      `, [
+        allowed.name,
+        phone1,
+        phone2,
+        allowed.post,
+        allowed.department,
+        allowed.location,
+        allowed.experience,
+        allowed.currentSalary,
+        allowed.expectedSalary,
+        slNo
+      ]);
+
+      return res.json({ success: true, message: "Profile updated" });
+    }
+
+    const dupReq = new sql.Request();
+    dupReq.input("phoneCheck", sql.VarChar(10), phone1);
+    dupReq.input("slNoCheck", sql.Int, slNo);
+    const dupResult = await dupReq.query(`
+      SELECT NAME FROM RESOURCE_MT
+      WHERE (PHONE1 = @phoneCheck OR PHONE2 = @phoneCheck) AND SL_NO != @slNoCheck
+    `);
+    if (dupResult.recordset.length > 0) {
+      return res.status(400).json({ success: false, error: `Phone already exists (Name: ${dupResult.recordset[0].NAME})` });
+    }
+    if (phone2 && phone2 !== phone1) {
+      const dupReq2 = new sql.Request();
+      dupReq2.input("phoneCheck", sql.VarChar(10), phone2);
+      dupReq2.input("slNoCheck", sql.Int, slNo);
+      const dupResult2 = await dupReq2.query(`
+        SELECT NAME FROM RESOURCE_MT
+        WHERE (PHONE1 = @phoneCheck OR PHONE2 = @phoneCheck) AND SL_NO != @slNoCheck
+      `);
+      if (dupResult2.recordset.length > 0) {
+        return res.status(400).json({ success: false, error: `Phone 2 already exists (Name: ${dupResult2.recordset[0].NAME})` });
+      }
+    }
+
+    const request = new sql.Request();
+    await request
+      .input("SL_NO", sql.Int, slNo)
+      .input("NAME", sql.VarChar(30), allowed.name)
+      .input("PHONE1", sql.VarChar(10), phone1)
+      .input("PHONE2", sql.VarChar(10), phone2)
+      .input("POST", sql.VarChar(50), allowed.post)
+      .input("DEPARTMENT", sql.VarChar(30), allowed.department)
+      .input("LOCATION", sql.VarChar(30), allowed.location)
+      .input("EXPERIENCE", sql.Numeric(4,1), allowed.experience)
+      .input("CUR_SALARY", sql.Numeric(12,3), allowed.currentSalary)
+      .input("EXP_SALARY", sql.Numeric(12,3), allowed.expectedSalary)
+      .query(`
+        UPDATE RESOURCE_MT SET
+          NAME = @NAME,
+          PHONE1 = @PHONE1,
+          PHONE2 = @PHONE2,
+          POST = @POST,
+          DEPARTMENT = @DEPARTMENT,
+          LOCATION = @LOCATION,
+          EXPERIENCE = @EXPERIENCE,
+          CUR_SALARY = @CUR_SALARY,
+          EXP_SALARY = @EXP_SALARY
+        WHERE SL_NO = @SL_NO
+      `);
+
+    res.json({ success: true, message: "Profile updated" });
+  } catch (error) {
+    console.error("❌ Candidate update error:", error.message);
+    res.status(500).json({ success: false, error: "Failed to update profile" });
+  }
+});
+
+/* ================= API: CANDIDATE - UPLOAD OWN CV ================= */
+
+app.post("/api/candidate/cv", requireAuth(["candidate"]), upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const slNo = parseInt(req.user.sub);
+    const filePath = `/uploads/${req.file.filename}`;
+
+    if (usePostgres) {
+      await pgPool.query(`UPDATE resource_mt SET doc_path = $1 WHERE sl_no = $2`, [filePath, slNo]);
+    } else {
+      const request = new sql.Request();
+      request.input("DOC_PATH", sql.VarChar(500), filePath);
+      request.input("SL_NO", sql.Int, slNo);
+      await request.query(`UPDATE RESOURCE_MT SET DOC_PATH = @DOC_PATH WHERE SL_NO = @SL_NO`);
+    }
+
+    res.json({ success: true, docPath: filePath, fileName: req.file.originalname, message: "CV uploaded successfully" });
+  } catch (error) {
+    console.error("❌ Candidate CV upload error:", error.message);
+    res.status(500).json({ error: "Failed to upload CV" });
+  }
+});
+
 /* ================= API: GET LATEST RECORD ================= */
 
-app.get("/api/resources/latest", async (req, res) => {
+app.get("/api/resources/latest", requireAuth(["admin"]), async (req, res) => {
   try {
     if (usePostgres) {
       const result = await pgPool.query(`
@@ -292,7 +787,8 @@ app.get("/api/resources/latest", async (req, res) => {
           exp_salary as "expectedSalary",
           remarks1 as remark,
           cur_status as status,
-          assign_to as "assignTo"
+          assign_to as "assignTo",
+          email
         FROM resource_mt
         ORDER BY entry_no DESC
         LIMIT 1
@@ -323,7 +819,8 @@ app.get("/api/resources/latest", async (req, res) => {
         EXP_SALARY as expectedSalary,
         REMARKS1 as remark,
         CUR_STATUS as status,
-        ASSIGN_TO as assignTo
+        ASSIGN_TO as assignTo,
+        EMAIL as email
       FROM RESOURCE_MT
       ORDER BY ENTRY_NO DESC
     `);
@@ -341,7 +838,7 @@ app.get("/api/resources/latest", async (req, res) => {
 
 /* ================= API: GET NEXT ENTRY NUMBER ================= */
 
-app.get("/api/resources/next-entry", async (req, res) => {
+app.get("/api/resources/next-entry", requireAuth(["admin"]), async (req, res) => {
   try {
     if (usePostgres) {
       const result = await pgPool.query(`
@@ -363,11 +860,12 @@ app.get("/api/resources/next-entry", async (req, res) => {
 
 /* ================= API: INSERT NEW RESOURCE ================= */
 
-app.post("/api/resources", async (req, res) => {
+app.post("/api/resources", requireAuth(["admin"]), async (req, res) => {
   try {
     const raw = req.body;
     const data = sanitizeFields(raw);
-    const { name, phone1, phone2, post, department, location, docPath, experience, currentSalary, expectedSalary, remark, status, assignTo, entryDate } = data;
+    const { name, phone1, phone2, post, department, location, docPath, experience, currentSalary, expectedSalary, remark, status, assignTo, entryDate, email } = data;
+    const emailNormalized = email ? String(email).trim().toLowerCase() : "";
 
     if (usePostgres) {
       const genResult = await pgPool.query(`
@@ -382,7 +880,7 @@ app.post("/api/resources", async (req, res) => {
           location, cur_status, assign_to, experience,
           cur_salary, exp_salary,
           remarks1, remarks2, remarks3,
-          fr, add_user, add_dt, edit_user, edit_dt, doc_path
+          fr, add_user, add_dt, edit_user, edit_dt, doc_path, email
         )
         VALUES
         (
@@ -390,7 +888,7 @@ app.post("/api/resources", async (req, res) => {
           $8, $9, $10, $11,
           $12, $13,
           $14, $15, $16,
-          $17, $18, $19, $20, $21, $22
+          $17, $18, $19, $20, $21, $22, $23
         )
       `, [
         nextEntryNo,
@@ -414,7 +912,8 @@ app.post("/api/resources", async (req, res) => {
         new Date(),
         "ADMIN",
         null,
-        docPath || null
+        docPath || null,
+        emailNormalized || null
       ]);
 
       const fetchResult = await pgPool.query(`
@@ -434,7 +933,8 @@ app.post("/api/resources", async (req, res) => {
           exp_salary as "expectedSalary",
           remarks1 as remark,
           cur_status as status,
-          assign_to as "assignTo"
+          assign_to as "assignTo",
+          email
         FROM resource_mt
         WHERE entry_no = $1
         LIMIT 1
@@ -477,6 +977,7 @@ app.post("/api/resources", async (req, res) => {
       .input("EDIT_USER", sql.Char(40), "ADMIN")
       .input("EDIT_DT", sql.DateTime, null)
       .input("DOC_PATH", sql.VarChar(500), docPath || "")
+      .input("EMAIL", sql.VarChar(100), emailNormalized || null)
       .query(`
         INSERT INTO RESOURCE_MT
         (
@@ -484,7 +985,7 @@ app.post("/api/resources", async (req, res) => {
           LOCATION, CUR_STATUS, ASSIGN_TO, EXPERIENCE,
           CUR_SALARY, EXP_SALARY,
           REMARKS1, REMARKS2, REMARKS3,
-          FR, ADD_USER, ADD_DT, EDIT_USER, EDIT_DT, DOC_PATH
+          FR, ADD_USER, ADD_DT, EDIT_USER, EDIT_DT, DOC_PATH, EMAIL
         )
         VALUES
         (
@@ -492,7 +993,7 @@ app.post("/api/resources", async (req, res) => {
           @LOCATION, @CUR_STATUS, @ASSIGN_TO, @EXPERIENCE,
           @CUR_SALARY, @EXP_SALARY,
           @REMARKS1, @REMARKS2, @REMARKS3,
-          @FR, @ADD_USER, @ADD_DT, @EDIT_USER, @EDIT_DT, @DOC_PATH
+          @FR, @ADD_USER, @ADD_DT, @EDIT_USER, @EDIT_DT, @DOC_PATH, @EMAIL
         )
       `);
 
@@ -515,7 +1016,8 @@ app.post("/api/resources", async (req, res) => {
         EXP_SALARY as expectedSalary,
         REMARKS1 as remark,
         CUR_STATUS as status,
-        ASSIGN_TO as assignTo
+        ASSIGN_TO as assignTo,
+        EMAIL as email
       FROM RESOURCE_MT
       WHERE ENTRY_NO = @entryNo
     `);
@@ -532,7 +1034,7 @@ app.post("/api/resources", async (req, res) => {
 
 /* ================= API: GET ALL RESOURCES ================= */
 
-app.get("/api/resources", async (req, res) => {
+app.get("/api/resources", requireAuth(["admin"]), async (req, res) => {
   try {
     const { name, phone, department, search } = req.query;
     
@@ -664,7 +1166,7 @@ app.get("/api/resources", async (req, res) => {
 
 /* ================= API: CHECK PHONE DUPLICATE ================= */
 
-app.get("/api/check-phone", async (req, res) => {
+app.get("/api/check-phone", requireAuth(["admin"]), async (req, res) => {
   try {
     const { phone, slNo } = req.query;
     
@@ -741,7 +1243,7 @@ app.get("/api/check-phone", async (req, res) => {
 
 /* ================= API: SEARCH RESOURCES WITH FILTERS & PAGINATION ================= */
 
-app.get("/api/resources/search", async (req, res) => {
+app.get("/api/resources/search", requireAuth(["admin"]), async (req, res) => {
   try {
     const { name, phone1, phone2, post, department, location, status, assignTo, page = 1, limit = 10 } = req.query;
     
@@ -961,7 +1463,7 @@ ORDER BY RowNum;
 
 /* ================= API: GET SINGLE RESOURCE ================= */
 
-app.get("/api/resources/:id", async (req, res) => {
+app.get("/api/resources/:id", requireAuth(["admin"]), async (req, res) => {
   try {
     const { id } = req.params;
     console.log("🔍 Fetching resource by ID:", id);
@@ -984,7 +1486,8 @@ app.get("/api/resources/:id", async (req, res) => {
           exp_salary as "expectedSalary",
           remarks1 as remark,
           cur_status as status,
-          assign_to as "assignTo"
+          assign_to as "assignTo",
+          email
         FROM resource_mt
         WHERE sl_no = $1
       `, [parseInt(id)]);
@@ -1017,7 +1520,8 @@ app.get("/api/resources/:id", async (req, res) => {
         EXP_SALARY as expectedSalary,
         REMARKS1 as remark,
         CUR_STATUS as status,
-        ASSIGN_TO as assignTo
+        ASSIGN_TO as assignTo,
+        EMAIL as email
       FROM RESOURCE_MT
       WHERE SL_NO = @id
     `);
@@ -1036,7 +1540,7 @@ app.get("/api/resources/:id", async (req, res) => {
 
 /* ================= API: UPLOAD CV/DOCUMENT ================= */
 
-app.post("/api/resources/upload", upload.single("file"), async (req, res) => {
+app.post("/api/resources/upload", requireAuth(["admin"]), upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
@@ -1059,14 +1563,15 @@ app.post("/api/resources/upload", upload.single("file"), async (req, res) => {
 
 /* ================= API: UPDATE RESOURCE ================= */
 
-app.put("/api/resources/:id", async (req, res) => {
+app.put("/api/resources/:id", requireAuth(["admin"]), async (req, res) => {
   try {
     const { id } = req.params;
     const raw = req.body;
     const data = sanitizeFields(raw);
-    const { name, phone1, phone2, post, department, location, docPath, experience, currentSalary, expectedSalary, remark, status, assignTo } = data;
+    const { name, phone1, phone2, post, department, location, docPath, experience, currentSalary, expectedSalary, remark, status, assignTo, email } = data;
+    const emailNormalized = email ? String(email).trim().toLowerCase() : "";
     
-    console.log("🔄 Updating resource ID:", id, { name, post, department, docPath, experience, currentSalary, expectedSalary, remark, status, assignTo });
+    console.log("🔄 Updating resource ID:", id, { name, post, department, docPath, experience, currentSalary, expectedSalary, remark, status, assignTo, email });
     
     if (usePostgres) {
       let pgQuery = `
@@ -1083,7 +1588,8 @@ app.put("/api/resources/:id", async (req, res) => {
           exp_salary = $9,
           remarks1 = $10,
           cur_status = $11,
-          assign_to = $12
+          assign_to = $12,
+          email = $13
       `;
       const pgParams = [
         trimField(name, 30),
@@ -1097,11 +1603,12 @@ app.put("/api/resources/:id", async (req, res) => {
         expectedSalary || 0,
         trimField(remark, 30),
         trimField(status, 30),
-        trimField(assignTo, 30)
+        trimField(assignTo, 30),
+        emailNormalized || null
       ];
 
       if (docPath !== undefined) {
-        pgQuery += `, doc_path = $13`;
+        pgQuery += `, doc_path = $14`;
         pgParams.push(docPath || null);
       }
 
@@ -1130,7 +1637,8 @@ app.put("/api/resources/:id", async (req, res) => {
         EXP_SALARY = @EXP_SALARY,
         REMARKS1 = @REMARKS1,
         CUR_STATUS = @CUR_STATUS,
-        ASSIGN_TO = @ASSIGN_TO
+        ASSIGN_TO = @ASSIGN_TO,
+        EMAIL = @EMAIL
     `;
     
     if (docPath !== undefined) {
@@ -1154,6 +1662,7 @@ app.put("/api/resources/:id", async (req, res) => {
       .input("REMARKS1", sql.VarChar(30), trimField(remark, 30))
       .input("CUR_STATUS", sql.Char(30), trimField(status, 30))
       .input("ASSIGN_TO", sql.Char(30), trimField(assignTo, 30))
+      .input("EMAIL", sql.VarChar(100), emailNormalized || null)
       .query(query);
     
     console.log("✅ Resource updated successfully");
@@ -1166,7 +1675,7 @@ app.put("/api/resources/:id", async (req, res) => {
 
 /* ================= API: TEST DB CONNECTION ================= */
 
-app.get("/api/test", async (req, res) => {
+app.get("/api/test", requireAuth(["admin"]), async (req, res) => {
   try {
     if (usePostgres) {
       const result = await pgPool.query(`SELECT * FROM resource_mt LIMIT 5`);
@@ -1186,7 +1695,7 @@ app.get("/api/test", async (req, res) => {
 
 /* ================= API: GET DEPARTMENTS ================= */
 
-app.get("/api/departments", async (req, res) => {
+app.get("/api/departments", requireAuth(["admin"]), async (req, res) => {
   try {
     if (usePostgres) {
       const result = await pgPool.query(`
@@ -1266,7 +1775,7 @@ async function extractTextWithOCR(fileBuffer) {
   }
 }
 
-app.post("/parse-cv", upload.single("cv"), async (req, res) => {
+app.post("/parse-cv", requireAuth(["admin"]), upload.single("cv"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
@@ -1379,7 +1888,7 @@ Rules:
 
 /* ================= INSERT INTO SQL ================= */
 
-app.post("/insert-candidate", async (req, res) => {
+app.post("/insert-candidate", requireAuth(["admin"]), async (req, res) => {
 
   try {
 
@@ -1579,7 +2088,7 @@ app.post("/insert-candidate", async (req, res) => {
 
 /* ================= GET ALL CANDIDATES (Legacy) ================= */
 
-app.get("/get-candidates", async (req, res) => {
+app.get("/get-candidates", requireAuth(["admin"]), async (req, res) => {
   try {
     if (usePostgres) {
       const result = await pgPool.query(`
@@ -1626,7 +2135,7 @@ app.get("/get-candidates", async (req, res) => {
 
 /* ================= SEARCH CANDIDATES (Legacy) ================= */
 
-app.get("/search-candidates", async (req, res) => {
+app.get("/search-candidates", requireAuth(["admin"]), async (req, res) => {
   try {
     const { q, department, status } = req.query;
 

@@ -231,12 +231,30 @@ body {
   }
 }
 
+/* Auth views entry (landing/login) */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .toast-enter {
     animation: toast-in 0.18s ease-out;
   }
   .preview-fade {
     animation: preview-fade 0.2s ease-out;
+  }
+  .auth-enter {
+    animation: fade-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .auth-enter-late {
+    animation: fade-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
   }
 }
 

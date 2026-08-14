@@ -11,16 +11,21 @@ import {
 } from '@phosphor-icons/react';
 import {
   Button,
+  CandidatePortal,
   ConfirmDialog,
   Field,
   Input,
+  LandingPage,
+  LoginView,
   Panel,
   SearchView,
   Textarea,
   Toaster,
   TopNav,
 } from './components';
-import { API_URL } from './utils/api';
+import type { AuthMode } from './components';
+import { API_URL, apiFetch, setUnauthorizedListener } from './utils/api';
+import { clearSession, getSession, getToken, setSessionToken, type Session } from './utils/auth';
 import { toast } from './utils/toast';
 
 type TabType = 'entry' | 'search';
@@ -75,6 +80,8 @@ function FormSection({
 
 const fileNameFromPath = (path: string) => path.split('/').pop() || path;
 
+const docUrl = (path: string) => API_URL.docUrl(path, getToken());
+
 function App() {
   const [dark, setDark] = useState(() => {
     const stored = window.localStorage.getItem('globe1-theme');
@@ -87,6 +94,40 @@ function App() {
     document.documentElement.classList.toggle('dark', dark);
     window.localStorage.setItem('globe1-theme', dark ? 'dark' : 'light');
   }, [dark]);
+
+  const [session, setSession] = useState<Session | null>(() => getSession());
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setUnauthorizedListener(() => setSession(null));
+    return () => setUnauthorizedListener(null);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const isOauthError = params.get('auth') === 'error';
+    const message = params.get('message');
+    if (token) {
+      setSessionToken(token);
+      setSession(getSession());
+    }
+    if (token || isOauthError) {
+      window.history.replaceState({}, '', window.location.pathname);
+      if (isOauthError) {
+        setAuthMode('candidate');
+        setOauthError(message || 'Google sign-in failed. Please try again.');
+      }
+    }
+  }, []);
+
+  const handleLogout = () => {
+    clearSession();
+    setSession(null);
+    setAuthMode(null);
+    setOauthError(null);
+  };
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -110,6 +151,7 @@ function App() {
     post: "",
     department: "",
     location: "",
+    email: "",
     status: "notice_period",
     assignTo: "hr_team",
     phone1: "",
@@ -127,7 +169,7 @@ function App() {
 
   const loadLatestRecord = async () => {
     try {
-      const response = await fetch(API_URL.resourcesLatest);
+      const response = await apiFetch(API_URL.resourcesLatest);
       const data = await response.json();
       if (data.empty) {
         handleNewRecord();
@@ -139,6 +181,7 @@ function App() {
           post: data.post || "",
           department: data.department || "",
           location: data.location || "",
+          email: data.email || "",
           status: "notice_period",
           assignTo: "hr_team",
           phone1: data.phone1 || "",
@@ -150,7 +193,7 @@ function App() {
         });
         setUploadedFilePath(data.docPath || null);
         if (data.docPath) {
-          setPreviewUrl(API_URL.docPath(data.docPath));
+          setPreviewUrl(docUrl(data.docPath));
           setFileType("application/pdf");
         }
         setIsEdit(true);
@@ -170,6 +213,7 @@ function App() {
       post: "",
       department: "",
       location: "",
+      email: "",
       status: "notice_period",
       assignTo: "hr_team",
       phone1: "",
@@ -191,7 +235,7 @@ function App() {
     setSaveDisabled(false);
 
     try {
-      const response = await fetch(API_URL.resourcesNextEntry);
+      const response = await apiFetch(API_URL.resourcesNextEntry);
       const data = await response.json();
       setFormData(prev => ({ ...prev, entryNo: String(data.nextEntryNo) }));
     } catch (error) {
@@ -210,7 +254,7 @@ function App() {
 
   const checkPhoneDuplicate = async (phone: string, slNo?: number) => {
     try {
-      const response = await fetch(API_URL.checkPhone(phone, slNo));
+      const response = await apiFetch(API_URL.checkPhone(phone, slNo));
       return await response.json();
     } catch (error) {
       console.error("Phone check error:", error);
@@ -365,7 +409,7 @@ function App() {
     fd.append("file", file);
 
     try {
-      const response = await fetch(API_URL.resourcesUpload, {
+      const response = await apiFetch(API_URL.resourcesUpload, {
         method: "POST",
         body: fd,
       });
@@ -382,7 +426,7 @@ function App() {
     parseFd.append("cv", file);
 
     try {
-      const parseResponse = await fetch(API_URL.parseCV, {
+      const parseResponse = await apiFetch(API_URL.parseCV, {
         method: "POST",
         body: parseFd,
       });
@@ -422,7 +466,7 @@ function App() {
     fd.append("file", file);
 
     try {
-      const response = await fetch(API_URL.resourcesUpload, {
+      const response = await apiFetch(API_URL.resourcesUpload, {
         method: "POST",
         body: fd,
       });
@@ -458,7 +502,7 @@ function App() {
 
     try {
       if (isEdit && recordId) {
-        const response = await fetch(API_URL.resourcesById(recordId), {
+        const response = await apiFetch(API_URL.resourcesById(recordId), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -468,6 +512,7 @@ function App() {
             post: formData.post,
             department: formData.department,
             location: formData.location,
+            email: formData.email,
             docPath: uploadedFilePath,
             experience: formData.experience,
             currentSalary: formData.currentSalary,
@@ -478,7 +523,7 @@ function App() {
         const result = await response.json();
         if (result.success) {
           toast.success("Record updated successfully!");
-          const refreshResponse = await fetch(API_URL.resourcesById(recordId));
+          const refreshResponse = await apiFetch(API_URL.resourcesById(recordId));
           const refreshedData = await refreshResponse.json();
           setFormData({
             entryNo: String(refreshedData.entryNo || ""),
@@ -487,6 +532,7 @@ function App() {
             post: refreshedData.post || "",
             department: refreshedData.department || "",
             location: refreshedData.location || "",
+            email: refreshedData.email || "",
             status: "notice_period",
             assignTo: "hr_team",
             phone1: refreshedData.phone1 || "",
@@ -498,14 +544,14 @@ function App() {
           });
           setUploadedFilePath(refreshedData.docPath || null);
           if (refreshedData.docPath) {
-            setPreviewUrl(API_URL.docPath(refreshedData.docPath));
+            setPreviewUrl(docUrl(refreshedData.docPath));
             setFileType("application/pdf");
           }
         } else {
           toast.error("Update failed: " + result.error);
         }
       } else {
-        const response = await fetch(API_URL.resources, {
+        const response = await apiFetch(API_URL.resources, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -525,6 +571,7 @@ function App() {
               post: result.record.post || "",
               department: result.record.department || "",
               location: result.record.location || "",
+              email: result.record.email || "",
               status: "notice_period",
               assignTo: "hr_team",
               phone1: result.record.phone1 || "",
@@ -536,7 +583,7 @@ function App() {
             });
             setUploadedFilePath(result.record.docPath || null);
             if (result.record.docPath) {
-              setPreviewUrl(API_URL.docPath(result.record.docPath));
+              setPreviewUrl(docUrl(result.record.docPath));
               setFileType("application/pdf");
             }
             setIsEdit(true);
@@ -574,7 +621,7 @@ function App() {
 
   const handleRecordSelect = async (record: EditingRecord) => {
     try {
-      const response = await fetch(API_URL.resourcesById(record.slNo));
+      const response = await apiFetch(API_URL.resourcesById(record.slNo));
       const data = await response.json();
       setFormData({
         entryNo: String(data.entryNo || ""),
@@ -583,6 +630,7 @@ function App() {
         post: data.post || "",
         department: data.department || "",
         location: data.location || "",
+        email: data.email || "",
         status: "notice_period",
         assignTo: "hr_team",
         phone1: data.phone1 || "",
@@ -594,7 +642,7 @@ function App() {
       });
       setUploadedFilePath(data.docPath || null);
       if (data.docPath) {
-        setPreviewUrl(API_URL.docPath(data.docPath));
+        setPreviewUrl(docUrl(data.docPath));
         setFileType("application/pdf");
       }
       setIsEdit(true);
@@ -612,7 +660,44 @@ function App() {
   const phone1Error = phoneErrors.phone1.error || null;
   const phone2Error = phoneErrors.phone2.error || null;
   const attachedFileName = uploadedFilePath ? fileNameFromPath(uploadedFilePath) : null;
-  const serverDocUrl = uploadedFilePath ? API_URL.docPath(uploadedFilePath) : null;
+  const serverDocUrl = uploadedFilePath ? docUrl(uploadedFilePath) : null;
+
+  if (!session) {
+    return (
+      <>
+        {authMode ? (
+          <LoginView
+            mode={authMode}
+            dark={dark}
+            onToggleDark={() => setDark((prev) => !prev)}
+            onBack={() => {
+              setAuthMode(null);
+              setOauthError(null);
+            }}
+            onLogin={setSession}
+            oauthError={oauthError}
+          />
+        ) : (
+          <LandingPage
+            dark={dark}
+            onToggleDark={() => setDark((prev) => !prev)}
+            onSelect={setAuthMode}
+          />
+        )}
+        <Toaster />
+      </>
+    );
+  }
+
+  if (session.role === 'candidate') {
+    return (
+      <CandidatePortal
+        dark={dark}
+        onToggleDark={() => setDark((prev) => !prev)}
+        onLogout={handleLogout}
+      />
+    );
+  }
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
@@ -625,6 +710,8 @@ function App() {
         onTabChange={(id) => handleTabChange(id as TabType)}
         dark={dark}
         onToggleDark={() => setDark((prev) => !prev)}
+        role="admin"
+        onLogout={handleLogout}
       />
 
       <main className="flex min-h-0 flex-1 flex-col gap-4 px-6 pb-5 pt-5">
@@ -759,6 +846,23 @@ function App() {
                         autoComplete="off"
                         className="font-mono"
                         error={!!phone2Error}
+                      />
+                    </Field>
+                    <Field
+                      label="Email"
+                      htmlFor="email"
+                      hint="Candidate's Google account email — used for candidate login"
+                      className="col-span-2"
+                    >
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        placeholder="candidate@example.com"
+                        value={formData.email}
+                        onChange={handleChange}
+                        maxLength={100}
+                        autoComplete="off"
                       />
                     </Field>
                   </FormSection>
