@@ -527,53 +527,105 @@ app.get("/api/auth/google/callback", async (req, res) => {
       // Automatically create a candidate profile for a new Google account
       const candidateName = String(payload.name || "").trim().slice(0, 30);
 
-      if (usePostgres) {
-        const entryResult = await pgPool.query(`
-          SELECT COALESCE(MAX(entry_no), 0) + 1 AS next_entry_no
-          FROM resource_mt
-        `);
+      try {
+        if (usePostgres) {
+          const entryResult = await pgPool.query(`
+            SELECT COALESCE(MAX(entry_no), 0) + 1 AS next_entry_no
+            FROM resource_mt
+          `);
 
-        const nextEntryNo = entryResult.rows[0].next_entry_no;
+          const nextEntryNo = entryResult.rows[0].next_entry_no;
 
-        const insertResult = await pgPool.query(`
-          INSERT INTO resource_mt
-            (entry_no, datez, name, email, add_user, add_dt, edit_user)
-          VALUES
-            ($1, NOW(), $2, $3, 'CANDIDATE', NOW(), 'CANDIDATE')
-          RETURNING sl_no, name
-        `, [
-          nextEntryNo,
-          candidateName,
-          email
-        ]);
+          const insertResult = await pgPool.query(`
+            INSERT INTO resource_mt
+              (entry_no, datez, phone1, phone2, name, post, department,
+               location, cur_status, assign_to, experience,
+               cur_salary, exp_salary,
+               remarks1, remarks2, remarks3,
+               fr, add_user, add_dt, edit_user, edit_dt, doc_path, email)
+            VALUES
+              ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+               $13, $14, $15, $16, $17, NOW(), $18, $19, $20, $21)
+            RETURNING sl_no, name
+          `, [
+            nextEntryNo,
+            "0000000000",
+            "0000000000",
+            candidateName,
+            "",
+            "",
+            "",
+            "",
+            "",
+            0,
+            0,
+            0,
+            "",
+            "",
+            "",
+            false,
+            "CANDIDATE",
+            "CANDIDATE",
+            null,
+            null,
+            email
+          ]);
 
-        row = insertResult.rows[0];
+          row = insertResult.rows[0];
 
-      } else {
-        const entryRequest = new sql.Request();
+        } else {
+          const entryRequest = new sql.Request();
 
-        const entryResult = await entryRequest.query(`
-          SELECT ISNULL(MAX(ENTRY_NO), 0) + 1 AS next_entry_no
-          FROM RESOURCE_MT
-        `);
+          const entryResult = await entryRequest.query(`
+            SELECT ISNULL(MAX(ENTRY_NO), 0) + 1 AS next_entry_no
+            FROM RESOURCE_MT
+          `);
 
-        const nextEntryNo = entryResult.recordset[0].next_entry_no;
+          const nextEntryNo = entryResult.recordset[0].next_entry_no;
 
-        const insertRequest = new sql.Request();
+          const insertRequest = new sql.Request();
 
-        insertRequest.input("entryNo", sql.Numeric(18,0), nextEntryNo);
-        insertRequest.input("name", sql.VarChar(30), candidateName);
-        insertRequest.input("email", sql.VarChar(100), email);
+          insertRequest.input("entryNo", sql.Numeric(18,0), nextEntryNo);
+          insertRequest.input("phone1", sql.VarChar(10), "0000000000");
+          insertRequest.input("phone2", sql.VarChar(10), "0000000000");
+          insertRequest.input("name", sql.VarChar(30), candidateName);
+          insertRequest.input("post", sql.VarChar(50), "");
+          insertRequest.input("department", sql.VarChar(30), "");
+          insertRequest.input("location", sql.VarChar(30), "");
+          insertRequest.input("curStatus", sql.Char(30), "");
+          insertRequest.input("assignTo", sql.Char(30), "");
+          insertRequest.input("experience", sql.Numeric(4,1), 0);
+          insertRequest.input("curSalary", sql.Numeric(12,3), 0);
+          insertRequest.input("expSalary", sql.Numeric(12,3), 0);
+          insertRequest.input("remarks1", sql.VarChar(30), "");
+          insertRequest.input("remarks2", sql.Char(50), "");
+          insertRequest.input("remarks3", sql.Char(50), "");
+          insertRequest.input("fr", sql.Bit, 0);
+          insertRequest.input("editDt", sql.DateTime, null);
+          insertRequest.input("docPath", sql.VarChar(500), "");
+          insertRequest.input("email", sql.VarChar(100), email);
 
-        const insertResult = await insertRequest.query(`
-          INSERT INTO RESOURCE_MT
-            (ENTRY_NO, DATEZ, NAME, EMAIL, ADD_USER, ADD_DT, EDIT_USER)
-          OUTPUT INSERTED.SL_NO AS sl_no, INSERTED.NAME AS name
-          VALUES
-            (@entryNo, GETDATE(), @name, @email, 'CANDIDATE', GETDATE(), 'CANDIDATE')
-        `);
+          const insertResult = await insertRequest.query(`
+            INSERT INTO RESOURCE_MT
+              (ENTRY_NO, DATEZ, PHONE1, PHONE2, NAME, POST, DEPARTMENT,
+               LOCATION, CUR_STATUS, ASSIGN_TO, EXPERIENCE,
+               CUR_SALARY, EXP_SALARY,
+               REMARKS1, REMARKS2, REMARKS3,
+               FR, ADD_USER, ADD_DT, EDIT_USER, EDIT_DT, DOC_PATH, EMAIL)
+            OUTPUT INSERTED.SL_NO AS sl_no, INSERTED.NAME AS name
+            VALUES
+              (@entryNo, GETDATE(), @phone1, @phone2, @name, @post, @department,
+               @location, @curStatus, @assignTo, @experience,
+               @curSalary, @expSalary,
+               @remarks1, @remarks2, @remarks3,
+               @fr, 'CANDIDATE', GETDATE(), 'CANDIDATE', @editDt, @docPath, @email)
+          `);
 
-        row = insertResult.recordset[0];
+          row = insertResult.recordset[0];
+        }
+      } catch (createErr) {
+        console.error("❌ Auto-create candidate INSERT failed for", email, ":", createErr.message);
+        throw createErr;
       }
 
       console.log("New candidate created:", email);
