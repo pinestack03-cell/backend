@@ -27,6 +27,7 @@ import type { AuthMode } from './components';
 import { API_URL, apiFetch, setUnauthorizedListener } from './utils/api';
 import { clearSession, getSession, getToken, setSessionToken, type Session } from './utils/auth';
 import { toast } from './utils/toast';
+import { trimRecordStrings } from './utils/text';
 
 type TabType = 'entry' | 'search';
 
@@ -173,7 +174,7 @@ function App() {
   const loadLatestRecord = async () => {
     try {
       const response = await apiFetch(API_URL.resourcesLatest);
-      const data = await response.json();
+      const data = trimRecordStrings(await response.json());
       if (data.empty) {
         handleNewRecord();
       } else {
@@ -527,7 +528,7 @@ function App() {
         if (result.success) {
           toast.success("Record updated successfully!");
           const refreshResponse = await apiFetch(API_URL.resourcesById(recordId));
-          const refreshedData = await refreshResponse.json();
+          const refreshedData = trimRecordStrings(await refreshResponse.json());
           setFormData({
             entryNo: String(refreshedData.entryNo || ""),
             entryDate: refreshedData.datez ? refreshedData.datez.split('T')[0] : new Date().toISOString().split('T')[0],
@@ -566,31 +567,32 @@ function App() {
         const result = await response.json();
         if (result.success) {
           toast.success(`Record saved successfully! Entry No: ${result.record.entryNo}`);
-          if (result.record) {
+          const record = trimRecordStrings(result.record);
+          if (record) {
             setFormData({
-              entryNo: String(result.record.entryNo),
-              entryDate: result.record.datez ? result.record.datez.split('T')[0] : new Date().toISOString().split('T')[0],
-              name: result.record.name || "",
-              post: result.record.post || "",
-              department: result.record.department || "",
-              location: result.record.location || "",
-              email: result.record.email || "",
+              entryNo: String(record.entryNo),
+              entryDate: record.datez ? record.datez.split('T')[0] : new Date().toISOString().split('T')[0],
+              name: record.name || "",
+              post: record.post || "",
+              department: record.department || "",
+              location: record.location || "",
+              email: record.email || "",
               status: "notice_period",
               assignTo: "hr_team",
-              phone1: result.record.phone1 || "",
-              phone2: result.record.phone2 || "",
-              experience: result.record.experience || 0,
-              currentSalary: result.record.currentSalary || 0,
-              expectedSalary: result.record.expectedSalary || 0,
-              remark: result.record.remark || "",
+              phone1: record.phone1 || "",
+              phone2: record.phone2 || "",
+              experience: record.experience || 0,
+              currentSalary: record.currentSalary || 0,
+              expectedSalary: record.expectedSalary || 0,
+              remark: record.remark || "",
             });
-            setUploadedFilePath(result.record.docPath?.trim() || null);
-            if (result.record.docPath) {
-              setPreviewUrl(docUrl(result.record.docPath));
+            setUploadedFilePath(record.docPath?.trim() || null);
+            if (record.docPath) {
+              setPreviewUrl(docUrl(record.docPath));
               setFileType("application/pdf");
             }
             setIsEdit(true);
-            setRecordId(result.record.slNo);
+            setRecordId(record.slNo);
           }
         } else {
           toast.error("Insert failed: " + result.error);
@@ -625,7 +627,7 @@ function App() {
   const handleRecordSelect = async (record: EditingRecord) => {
     try {
       const response = await apiFetch(API_URL.resourcesById(record.slNo));
-      const data = await response.json();
+      const data = trimRecordStrings(await response.json());
       setFormData({
         entryNo: String(data.entryNo || ""),
         entryDate: data.datez ? data.datez.split('T')[0] : new Date().toISOString().split('T')[0],

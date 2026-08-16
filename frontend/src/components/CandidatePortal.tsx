@@ -7,10 +7,11 @@ import {
   FileText,
   UploadSimple,
 } from '@phosphor-icons/react';
-import { Button, Field, Input, Panel, PageHeader, StatusBadge, Toaster, TopNav } from './index';
+import { Button, Field, Input, Panel, PageHeader, Select, StatusBadge, Toaster, TopNav } from './index';
 import { API_URL, apiFetch } from '../utils/api';
 import { getToken } from '../utils/auth';
 import { toast } from '../utils/toast';
+import { trimRecordStrings } from '../utils/text';
 
 interface CandidateRecord {
   slNo: number;
@@ -38,6 +39,15 @@ const MAX_LENGTHS = {
   department: 30,
   location: 30,
 };
+
+const STATUS_OPTIONS = [
+  { value: 'notice_period', label: 'Notice Period' },
+  { value: 'interview_scheduled', label: 'Interview Scheduled' },
+  { value: 'offer_extended', label: 'Offer Extended' },
+  { value: 'joined', label: 'Joined' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'on_hold', label: 'On Hold' },
+];
 
 function FormSection({
   title,
@@ -92,6 +102,7 @@ export function CandidatePortal({ dark, onToggleDark, onLogout }: CandidatePorta
     experience: 0,
     currentSalary: 0,
     expectedSalary: 0,
+    status: '',
   });
 
   const loadRecord = useCallback(async () => {
@@ -106,7 +117,7 @@ export function CandidatePortal({ dark, onToggleDark, onLogout }: CandidatePorta
         setLoadError('Failed to load your profile.');
         return;
       }
-      const data: CandidateRecord = await response.json();
+      const data: CandidateRecord = trimRecordStrings(await response.json());
       setRecord(data);
       setFormData({
         name: data.name || '',
@@ -118,6 +129,7 @@ export function CandidatePortal({ dark, onToggleDark, onLogout }: CandidatePorta
         experience: data.experience || 0,
         currentSalary: data.currentSalary || 0,
         expectedSalary: data.expectedSalary || 0,
+        status: data.status || '',
       });
       setUploadedFilePath(data.docPath || null);
       if (data.docPath) {
@@ -286,7 +298,7 @@ export function CandidatePortal({ dark, onToggleDark, onLogout }: CandidatePorta
       <main className="flex min-h-0 flex-1 flex-col gap-4 px-6 pb-5 pt-5">
         <PageHeader
           title="My Profile"
-          subtitle="View and update your details. Entry number and status are managed by the admin."
+          subtitle="View and update your details. Entry number is managed by the admin."
           actions={
             <Button size="sm" icon={<Check size={14} weight="bold" />} onClick={handleSave} disabled={saving || !isFormValid()}>
               {saving ? 'Saving…' : 'Save'}
@@ -421,7 +433,7 @@ export function CandidatePortal({ dark, onToggleDark, onLogout }: CandidatePorta
                 </Field>
               </FormSection>
 
-              <FormSection title="Tracking" hint="Managed by the admin — read-only">
+              <FormSection title="Tracking" hint="Email and entry details are managed by the admin.">
                 <Field label="Email" htmlFor="email">
                   <Input
                     id="email"
@@ -450,12 +462,19 @@ export function CandidatePortal({ dark, onToggleDark, onLogout }: CandidatePorta
                   />
                 </Field>
                 <Field label="Current Status" htmlFor="status">
-                  <Input
+                  <Select
                     id="status"
                     name="status"
-                    value={record?.status || ''}
-                    disabled
-                  />
+                    value={formData.status}
+                    onChange={handleChange}
+                  >
+                    {formData.status && !STATUS_OPTIONS.some((o) => o.value === formData.status) && (
+                      <option value={formData.status}>{formData.status.replace(/_/g, ' ')}</option>
+                    )}
+                    {STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </Select>
                 </Field>
               </FormSection>
 
