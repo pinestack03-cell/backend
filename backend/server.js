@@ -71,14 +71,9 @@ function sanitizeGeminiResponse(data) {
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_TTL = process.env.TOKEN_TTL || "12h";
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
 if (!JWT_SECRET) {
   console.warn("⚠️ JWT_SECRET is not set. Token issuance will be rejected. Set JWT_SECRET in the environment.");
-}
-if (!ADMIN_PASSWORD) {
-  console.warn("⚠️ ADMIN_PASSWORD is not set. Admin login is disabled. Set ADMIN_PASSWORD in the environment.");
 }
 
 function signToken(payload) {
@@ -440,14 +435,40 @@ app.get("/api", (req, res) => {
 
 /* ================= API: AUTH - ADMIN LOGIN ================= */
 
-app.post("/api/auth/admin/login", (req, res) => {
+app.post("/api/auth/admin/login", async (req, res) => {
   try {
     const { username, password } = req.body || {};
-    if (!ADMIN_PASSWORD || !safeEqual(username, ADMIN_USERNAME) || !safeEqual(password, ADMIN_PASSWORD)) {
+    if (!username || !password) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
-    const token = signToken({ role: "admin", sub: "admin", name: ADMIN_USERNAME });
-    res.json({ success: true, token, role: "admin", name: ADMIN_USERNAME });
+    if (usePostgres) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const request = new sql.Request();
+    request.input("userName", sql.VarChar(100), String(username).trim());
+    const result = await request.query(`
+      SELECT TOP 1
+        RTRIM(User_Name) AS user_name,
+        RTRIM(Password) AS password,
+        RTRIM(User_Type) AS user_type
+      FROM User_MT
+      WHERE LOWER(RTRIM(User_Name)) = LOWER(@userName)
+    `);
+
+    const user = result.recordset[0] || null;
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    if (String(user.user_type).toUpperCase() !== "ADMIN") {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    if (!safeEqual(user.password, String(password))) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const token = signToken({ role: "admin", sub: "admin", name: user.user_name });
+    res.json({ success: true, token, role: "admin", name: user.user_name });
   } catch (error) {
     console.error("❌ Admin login error:", error);
     res.status(500).json({ error: "Login failed" });
