@@ -1,0 +1,16 @@
+⚠️ JWT_SECRET is not set. Token issuance will be rejected. Set JWT_SECRET in the environment.
+⚠️ ADMIN_PASSWORD is not set. Admin login is disabled. Set ADMIN_PASSWORD in the environment.
+❌ Google OAuth callback error: Cannot insert the value NULL into column 'PHONE1', table 'GLOBE1.dbo.RESOURCE_MT'; column does not allow nulls. INSERT fails.
+⚠️ JWT_SECRET is not set. Token issuance will be rejected. Set JWT_SECRET in the environment.
+⚠️ ADMIN_PASSWORD is not set. Admin login is disabled. Set ADMIN_PASSWORD in the environment.
+❌ Google OAuth callback error: JWT_SECRET is not configured
+⚠️ JWT_SECRET is not set. Token issuance will be rejected. Set JWT_SECRET in the environment.
+⚠️ ADMIN_PASSWORD is not set. Admin login is disabled. Set ADMIN_PASSWORD in the environment.
+⚠️ Google OAuth is not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI). Candidate Google login will be disabled.
+⚠️ JWT_SECRET is not set. Token issuance will be rejected. Set JWT_SECRET in the environment.
+⚠️ ADMIN_PASSWORD is not set. Admin login is disabled. Set ADMIN_PASSWORD in the environment.
+⚠️ Google OAuth is not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI). Candidate Google login will be disabled.
+⚠️ JWT_SECRET is not set. Token issuance will be rejected. Set JWT_SECRET in the environment.
+⚠️ ADMIN_PASSWORD is not set. Admin login is disabled. Set ADMIN_PASSWORD in the environment.
+⚠️ Google OAuth is not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI). Candidate Google login will be disabled.
+⚠️ ADMIN_PASSWORD is not set. Admin login is disabled. Set ADMIN_PASSWORD in the environment.
