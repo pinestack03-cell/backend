@@ -272,9 +272,10 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
     }
   };
 
-  const selectedDocUrl = selectedRecord?.docPath ? API_URL.docUrl(selectedRecord.docPath, getToken()) : null;
+  const selectedDocPath = selectedRecord?.docPath?.trim() || '';
+  const selectedDocUrl = selectedDocPath ? API_URL.docUrl(selectedDocPath, getToken()) : null;
   const previewSrc =
-    selectedDocUrl && selectedRecord?.docPath?.toLowerCase().endsWith('.pdf')
+    selectedDocUrl && selectedDocPath.toLowerCase().endsWith('.pdf')
       ? `${selectedDocUrl}#page=1&view=Fit`
       : selectedDocUrl;
 
@@ -621,9 +622,9 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
           </div>
 
           <div className="min-h-0 flex-1 overscroll-contain bg-slate-100 p-3 dark:bg-slate-950">
-            {selectedRecord?.docPath ? (
+            {selectedDocPath ? (
               <iframe
-                key={selectedRecord.docPath}
+                key={selectedDocPath}
                 src={previewSrc ?? undefined}
                 className="preview-fade h-full w-full rounded-lg border border-slate-200 bg-white shadow-panel dark:border-slate-800"
                 title="Resume Preview"
@@ -632,10 +633,10 @@ export function SearchView({ onRecordDoubleClick, onBack }: SearchViewProps) {
               <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
                 <EmptyState
                   icon={<FileText size={22} />}
-                  title={selectedRecord ? 'No resume attached' : 'No candidate selected'}
+                  title={selectedRecord ? 'No CV uploaded' : 'No candidate selected'}
                   description={
                     selectedRecord
-                      ? 'This candidate has no document uploaded.'
+                      ? "This candidate hasn't uploaded a CV yet."
                       : 'Select a candidate from the list to preview their resume.'
                   }
                 />
