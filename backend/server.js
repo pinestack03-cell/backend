@@ -753,6 +753,7 @@ app.put("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
     pick("post", 50);
     pick("department", 30);
     pick("location", 30);
+    pick("status", 30);
 
     const experience = Number(raw.experience);
     const currentSalary = Number(raw.currentSalary);
@@ -791,7 +792,7 @@ app.put("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
         }
       }
 
-      await pgPool.query(`
+      let pgUpdate = `
         UPDATE resource_mt SET
           name = $1,
           phone1 = $2,
@@ -802,8 +803,8 @@ app.put("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
           experience = $7,
           cur_salary = $8,
           exp_salary = $9
-        WHERE sl_no = $10
-      `, [
+      `;
+      const pgParams = [
         allowed.name,
         phone1,
         phone2,
@@ -812,9 +813,16 @@ app.put("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
         allowed.location,
         allowed.experience,
         allowed.currentSalary,
-        allowed.expectedSalary,
-        slNo
-      ]);
+        allowed.expectedSalary
+      ];
+      if (allowed.status !== undefined) {
+        pgUpdate += `, cur_status = $${pgParams.length + 1}`;
+        pgParams.push(allowed.status);
+      }
+      pgUpdate += ` WHERE sl_no = $${pgParams.length + 1}`;
+      pgParams.push(slNo);
+
+      await pgPool.query(pgUpdate, pgParams);
 
       return res.json({ success: true, message: "Profile updated" });
     }
@@ -843,6 +851,9 @@ app.put("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
     }
 
     const request = new sql.Request();
+    if (allowed.status !== undefined) {
+      request.input("CUR_STATUS", sql.Char(30), allowed.status);
+    }
     await request
       .input("SL_NO", sql.Int, slNo)
       .input("NAME", sql.VarChar(30), allowed.name)
@@ -865,6 +876,7 @@ app.put("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
           EXPERIENCE = @EXPERIENCE,
           CUR_SALARY = @CUR_SALARY,
           EXP_SALARY = @EXP_SALARY
+          ${allowed.status !== undefined ? ", CUR_STATUS = @CUR_STATUS" : ""}
         WHERE SL_NO = @SL_NO
       `);
 
