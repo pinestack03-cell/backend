@@ -61,6 +61,11 @@ function FormSection({
 
 const fileNameFromPath = (path: string) => path.split('/').pop() || path;
 
+const buildPreviewSrc = (path: string) => {
+  const url = API_URL.docUrl(path, getToken());
+  return path.toLowerCase().endsWith('.pdf') ? `${url}#page=1&view=Fit` : url;
+};
+
 interface CandidatePortalProps {
   dark: boolean;
   onToggleDark: () => void;
@@ -116,7 +121,7 @@ export function CandidatePortal({ dark, onToggleDark, onLogout }: CandidatePorta
       });
       setUploadedFilePath(data.docPath || null);
       if (data.docPath) {
-        setPreviewUrl(API_URL.docUrl(data.docPath, getToken()));
+        setPreviewUrl(buildPreviewSrc(data.docPath));
       }
     } catch {
       setLoadError('Server error. Please try again.');
@@ -204,7 +209,7 @@ export function CandidatePortal({ dark, onToggleDark, onLogout }: CandidatePorta
       const data = await response.json();
       if (data.success) {
         setUploadedFilePath(data.docPath);
-        setPreviewUrl(API_URL.docUrl(data.docPath, getToken()));
+        setPreviewUrl(buildPreviewSrc(data.docPath));
         toast.success('CV uploaded successfully!');
       } else {
         setPreviewUrl(null);
