@@ -517,7 +517,7 @@ app.get("/api/auth/google/callback", async (req, res) => {
       const request = new sql.Request();
       request.input("email", sql.VarChar(100), email);
       const result = await request.query(`
-        SELECT TOP 1 SL_NO, NAME FROM RESOURCE_MT
+        SELECT TOP 1 SL_NO AS sl_no, NAME AS name FROM RESOURCE_MT
         WHERE LOWER(email) = LOWER(@email)
       `);
       row = result.recordset[0] || null;
@@ -649,6 +649,9 @@ app.get("/api/auth/google/callback", async (req, res) => {
 app.get("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
   try {
     const slNo = parseInt(req.user.sub);
+    if (!Number.isFinite(slNo)) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
 
     if (usePostgres) {
       const result = await pgPool.query(`
@@ -714,6 +717,9 @@ app.get("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
 app.put("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
   try {
     const slNo = parseInt(req.user.sub);
+    if (!Number.isFinite(slNo)) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
     const raw = req.body || {};
 
     const allowed = {};
@@ -856,6 +862,9 @@ app.post("/api/candidate/cv", requireAuth(["candidate"]), upload.single("file"),
       return res.status(400).json({ error: "No file uploaded" });
     }
     const slNo = parseInt(req.user.sub);
+    if (!Number.isFinite(slNo)) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
     const filePath = `/uploads/${req.file.filename}`;
 
     if (usePostgres) {
