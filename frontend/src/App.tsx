@@ -80,7 +80,10 @@ function FormSection({
 
 const fileNameFromPath = (path: string) => path.split('/').pop() || path;
 
-const docUrl = (path: string) => API_URL.docUrl(path, getToken());
+const docUrl = (path: string) => {
+  const p = (path || '').trim();
+  return p ? API_URL.docUrl(p, getToken()) : null;
+};
 
 function App() {
   const [dark, setDark] = useState(() => {
@@ -191,7 +194,7 @@ function App() {
           expectedSalary: data.expectedSalary || 0,
           remark: data.remark || "",
         });
-        setUploadedFilePath(data.docPath || null);
+        setUploadedFilePath(data.docPath?.trim() || null);
         if (data.docPath) {
           setPreviewUrl(docUrl(data.docPath));
           setFileType("application/pdf");
@@ -542,7 +545,7 @@ function App() {
             expectedSalary: refreshedData.expectedSalary || 0,
             remark: refreshedData.remark || "",
           });
-          setUploadedFilePath(refreshedData.docPath || null);
+          setUploadedFilePath(refreshedData.docPath?.trim() || null);
           if (refreshedData.docPath) {
             setPreviewUrl(docUrl(refreshedData.docPath));
             setFileType("application/pdf");
@@ -581,7 +584,7 @@ function App() {
               expectedSalary: result.record.expectedSalary || 0,
               remark: result.record.remark || "",
             });
-            setUploadedFilePath(result.record.docPath || null);
+            setUploadedFilePath(result.record.docPath?.trim() || null);
             if (result.record.docPath) {
               setPreviewUrl(docUrl(result.record.docPath));
               setFileType("application/pdf");
@@ -640,7 +643,7 @@ function App() {
         expectedSalary: data.expectedSalary || 0,
         remark: data.remark || "",
       });
-      setUploadedFilePath(data.docPath || null);
+      setUploadedFilePath(data.docPath?.trim() || null);
       if (data.docPath) {
         setPreviewUrl(docUrl(data.docPath));
         setFileType("application/pdf");
