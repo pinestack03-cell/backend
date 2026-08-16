@@ -22,7 +22,10 @@ export const API_URL = {
   googleAuth: `${API_BASE}/api/auth/google`,
   candidateMe: `${API_BASE}/api/candidate/me`,
   candidateCv: `${API_BASE}/api/candidate/cv`,
-  docPath: (path: string) => path?.startsWith('http') ? path : `${API_BASE}${path}`,
+  docPath: (path: string) => {
+    const p = (path || '').trim();
+    return p.startsWith('http') ? p : `${API_BASE}${p}`;
+  },
   docUrl: (path: string, token?: string | null) => {
     const url = API_URL.docPath(path);
     if (!token) return url;

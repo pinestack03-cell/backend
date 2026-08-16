@@ -197,12 +197,12 @@ async function getDocPathForCandidate(slNo) {
   try {
     if (usePostgres) {
       const result = await pgPool.query(`SELECT doc_path FROM resource_mt WHERE sl_no = $1`, [slNo]);
-      return result.rows[0]?.doc_path || null;
+      return (result.rows[0]?.doc_path || "").trim() || null;
     }
     const request = new sql.Request();
     request.input("slNo", sql.Int, slNo);
     const result = await request.query(`SELECT DOC_PATH FROM RESOURCE_MT WHERE SL_NO = @slNo`);
-    return result.recordset[0]?.DOC_PATH || null;
+    return (result.recordset[0]?.DOC_PATH || "").trim() || null;
   } catch (err) {
     console.error("❌ Doc path lookup error:", err.message);
     return null;
@@ -665,7 +665,7 @@ app.get("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
           post,
           department,
           location,
-          doc_path as "docPath",
+          RTRIM(doc_path) as "docPath",
           experience,
           cur_salary as "currentSalary",
           exp_salary as "expectedSalary",
@@ -693,7 +693,7 @@ app.get("/api/candidate/me", requireAuth(["candidate"]), async (req, res) => {
         POST as post,
         DEPARTMENT as department,
         LOCATION as location,
-        DOC_PATH as docPath,
+        RTRIM(DOC_PATH) as docPath,
         EXPERIENCE as experience,
         CUR_SALARY as currentSalary,
         EXP_SALARY as expectedSalary,
