@@ -351,27 +351,6 @@ async function ensureSchema() {
 
 const usePostgres = !!process.env.DATABASE_URL;
 
-if (usePostgres) {
-  pgPool.connect()
-    .then(() => {
-      console.log("✅ PostgreSQL Connected");
-      initPostgresTable();
-      ensureSchema();
-    })
-    .catch(err => {
-      console.error("❌ PostgreSQL Connection Error:", err.message);
-    });
-} else {
-  sql.connect(dbConfig)
-    .then(() => {
-      console.log("✅ SQL Server Connected to", dbConfig.database);
-      ensureSchema();
-    })
-    .catch(err => {
-      console.error("❌ SQL Connection Error:", err.message);
-    });
-}
-
 /* ================= DB REQUEST HELPER ================= */
 
 async function createDbRequest() {
@@ -2386,6 +2365,27 @@ app.get("/search-candidates", requireAuth(["admin"]), async (req, res) => {
 /* ================= START SERVER ================= */
 
 const PORT = process.env.PORT || 90;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Backend running at http://0.0.0.0:${PORT}`);
-});
+
+async function startServer() {
+  try {
+    if (usePostgres) {
+      await pgPool.connect();
+      console.log("✅ PostgreSQL Connected");
+      await initPostgresTable();
+      await ensureSchema();
+    } else {
+      await sql.connect(dbConfig);
+      console.log("✅ SQL Server Connected to", dbConfig.database);
+      await ensureSchema();
+    }
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Backend running at http://0.0.0.0:${PORT}`);
+    });
+  } catch (error) {
+    console.error("❌ Database initialization failed. HTTP server NOT started:", error);
+    process.exit(1);
+  }
+}
+
+startServer();
